@@ -1,0 +1,58 @@
+{
+    "appKeys": {
+        "W_CITY": 5,
+        "W_CKEY": 1,
+        "W_COND": 3,
+        "W_ICON": 4,
+        "W_TEMP": 2
+    },
+    "capabilities": [
+        "configurable"
+    ],
+    "companyName": "PanicMan",
+    "longName": "HTC Sense 6.3",
+    "projectType": "native",
+    "resources": {
+        "media": [
+            {
+                "file": "images/weather_all.png",
+                "name": "IMAGE_WEATHER_ALL",
+                "type": "png"
+            },
+            {
+                "file": "images/numbers.png",
+                "name": "IMAGE_NUMBERS",
+                "type": "png"
+            },
+            {
+                "file": "images/clock_bg.png",
+                "name": "IMAGE_CLOCK_BG",
+                "type": "png"
+            },
+            {
+                "characterRegex": "[0-9,\u00b0-]",
+                "file": "fonts/DroidSans.ttf",
+                "name": "FONT_ROBOTO_SUBSET_32",
+                "trackingAdjust": -2,
+                "type": "font"
+            },
+            {
+                "characterRegex": "[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df ]",
+                "file": "fonts/DroidSans.ttf",
+                "name": "FONT_ROBOTO_SUBSET_10",
+                "type": "font"
+            }
+        ]
+    },
+    "sdkVersion": "3",
+    "shortName": "HTC Sense 6.3",
+    "targetPlatforms": [
+        "basalt"
+    ],
+    "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
+    "versionCode": 1,
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": true
+    }
+}
