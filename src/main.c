@@ -1,5 +1,6 @@
 #include <pebble.h>
 #include "gbitmap_tools.h"
+#include "netdownload.h"
 
 enum DataKeys {
 	W_CKEY=1,
@@ -27,11 +28,12 @@ persist settings = {
 
 static Window *s_main_window;
 static Layer *s_clock_layer, *s_cal_layer;
-static GBitmap *s_ClockBG, *s_Numbers, *s_WeatherAll;
+static GBitmap *s_ClockBG, *s_Numbers, *s_WeatherCurr;
 static GFont s_TempFont, s_CondFont;
 static uint8_t s_HH, s_MM, s_SS;
 static AppTimer *timer_weather;
-
+static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png";
+ 
 //-----------------------------------------------------------------------------------------------------------------------
 static void clock_layer_update_callback(Layer *layer, GContext* ctx) 
 {
@@ -67,9 +69,8 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 		GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
 		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-3, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
 
-		GBitmap *bmpWeather = gbitmap_create_as_sub_bitmap(s_WeatherAll, GRect(60*(settings.w_icon % 13), 0, 60, 50));
-		graphics_draw_bitmap_in_rect(ctx, bmpWeather, GRect(bg_size.w/2-60/2, bg_size.h-50, 60, 50));
-		gbitmap_destroy(bmpWeather);
+		if (s_WeatherCurr)
+			graphics_draw_bitmap_in_rect(ctx, s_WeatherCurr, GRect(bg_size.w/2-60/2, bg_size.h-50, 60, 50));
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -90,7 +91,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed)
 //-----------------------------------------------------------------------------------------------------------------------
 static bool update_weather() 
 {
-	strcpy(settings.w_cond, "updating...");
+	strcpy(settings.w_cond, "Updating...");
 	layer_mark_dirty(s_clock_layer);
 
 	DictionaryIterator *iter;
@@ -145,16 +146,55 @@ void in_received_handler(DictionaryIterator *received, void *context)
 			
 		akt_tuple = dict_read_next(received);
 	}
+
+	//Destroy old weather icon
+	if (s_WeatherCurr) {
+		gbitmap_destroy(s_WeatherCurr);
+		s_WeatherCurr = NULL;
+	}
+	
+	//Load new weather icon
+	if (settings.w_icon <= 12)
+	{
+		snprintf(AdressBuffer, sizeof(AdressBuffer), "http://panicman.github.io/images/weather_big%d.png", settings.w_icon);
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Requesting image: %s", AdressBuffer);
+		netdownload_request(AdressBuffer);
+	}
+	
+	//Update clock (Weather) layer
+	layer_mark_dirty(s_clock_layer);
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void download_complete_handler(NetDownload *download) {
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Loaded image with %u bytes, Heap free is %lu bytes", (unsigned int)download->length, (long unsigned int)heap_bytes_free());
+	
+	//Create Bitmap from png data
+	GBitmap *bmp = gbitmap_create_from_png_data(download->data, download->length);
+	
+	GRect rcBmp = gbitmap_get_bounds(bmp);
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Created Image with Dimensions: %dx%d", rcBmp.size.w, rcBmp.size.h);
+
+	// Save pointer to currently shown bitmap (to free it)
+	if (s_WeatherCurr) 
+		gbitmap_destroy(s_WeatherCurr);
+	s_WeatherCurr = bmp;
 	
 	//Update Weather layer
 	layer_mark_dirty(s_clock_layer);
+
+	// Free the memory now
+	free(download->data);
+	download->data = NULL;
+	netdownload_destroy(download);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void main_window_load(Window *window) 
 {
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Initial Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_ClockBG = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_CLOCK_BG);
-	s_WeatherAll = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_WEATHER_ALL);
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Glock BG loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_Numbers = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_NUMBERS);
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Numbers loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 
 	s_TempFont = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_SUBSET_32));
 	s_CondFont = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_SUBSET_10));
@@ -180,7 +220,7 @@ static void main_window_unload(Window *window)
 	
 	gbitmap_destroy(s_ClockBG);
 	gbitmap_destroy(s_Numbers);
-	gbitmap_destroy(s_WeatherAll);
+	gbitmap_destroy(s_WeatherCurr);
 	
 	fonts_unload_custom_font(s_TempFont);
 	fonts_unload_custom_font(s_CondFont);
@@ -188,6 +228,10 @@ static void main_window_unload(Window *window)
 //-----------------------------------------------------------------------------------------------------------------------
 static void init() 
 {
+	//Initialize dynamic weather image load
+	s_WeatherCurr = NULL;
+	netdownload_initialize(download_complete_handler, in_received_handler);
+	
 	s_main_window = window_create();
 	window_set_window_handlers(s_main_window, (WindowHandlers) {
 		.load = main_window_load,
@@ -195,7 +239,7 @@ static void init()
 	});
 	window_stack_push(s_main_window, true);
 	
-	tick_timer_service_subscribe(SECOND_UNIT, (TickHandler)tick_handler);
+	tick_timer_service_subscribe(MINUTE_UNIT, (TickHandler)tick_handler);
 	
 	//Get a time structure so that it doesn't start blank
 	time_t temp = time(NULL);
@@ -204,17 +248,22 @@ static void init()
 	//Manually call the tick handler when the window is loading
 	tick_handler(t, MINUTE_UNIT);
 
+/*	
 	//Configure app messages
     app_message_register_inbox_received(in_received_handler);
     const uint32_t inbound_size = 128;
     const uint32_t outbound_size = 128;
     app_message_open(inbound_size, outbound_size);
-	
+*/	
 	timer_weather = app_timer_register(1000, timerCallback, NULL);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void deinit() 
 {
+	if (s_WeatherCurr) 
+		
+
+	netdownload_deinitialize(); // call this to avoid 20B memory leak
 	app_timer_cancel(timer_weather);
 	tick_timer_service_unsubscribe();
 	window_destroy(s_main_window);
