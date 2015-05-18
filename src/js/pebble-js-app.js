@@ -1,5 +1,6 @@
 var initialised = false;
 var transferInProgress = false;
+var CityID = 0, posLat = "0", posLon = "0";
 
 //http://panicman.github.io/images/weather_big0-12.png
 var weatherIcon = {
@@ -45,10 +46,31 @@ var weatherIconMini = {
     "50n" : 8
 };
 
+//-- Get current location: http://forums.getpebble.com/discussion/21755/pebble-js-location-to-url
+var locationOptions = {
+	enableHighAccuracy: true, 
+	maximumAge: 10000, 
+	timeout: 10000
+};
+
+function locationSuccess(pos) {
+	console.log('lat= ' + pos.coords.latitude + ' lon= ' + pos.coords.longitude);
+	posLat = (pos.coords.latitude).toFixed(3);
+	posLon = (pos.coords.longitude).toFixed(3);
+	updateWeather();
+}
+
+function locationError(err) {
+	posLat = "0";
+	posLon = "0";
+	console.log('location error (' + err.code + '): ' + err.message);
+}
+
 Pebble.addEventListener('ready', 
 	function(e) {
 		initialised = true;
 		console.log('JavaScript app ready and running!');
+		sendMessageToPebble({"JS_READY": 1});		
 	}
 );
 
@@ -86,32 +108,50 @@ Pebble.addEventListener('appmessage',
 				console.log("Ignoring request to download " + e.payload.NETDL_URL + " because another download is in progress.");
 			}
 		}
-		else {	//Weather Download
-			var params=e.payload;
-			console.log("updating weather");
-			var req = new XMLHttpRequest();
-			req.open("GET", "http://api.openweathermap.org/data/2.5/weather?id="+params.W_CKEY.toString()+"&unit=metric&lang=de&type=accurate", true);
-			req.onload = function(e) {
-				if (req.readyState == 4) {
-					if (req.status == 200) {
-						var response = JSON.parse(req.responseText);
-						var temp = response.main.temp-273.15;
-						var cond = response.weather[0].description;
-						var icon = response.weather[0].icon;
-						var name = response.name;
-						sendMessageToPebble({
-							"W_TEMP": temp,
-							"W_COND": cond,
-							"W_ICON": weatherIcon[icon],
-							"W_CITY": name
-						});
-					}
-				}
-			};
-			req.send(null);
+		else if ('W_CKEY' in e.payload) {	//Weather Download
+			CityID = e.payload.W_CKEY;
+			if (CityID === 0)
+				navigator.geolocation.getCurrentPosition(locationSuccess, locationError, locationOptions);
+			else
+				updateWeather();
 		}
     }
 );
+
+function updateWeather() {
+	console.log("Updating weather");
+	var req = new XMLHttpRequest();
+	var URL = "http://api.openweathermap.org/data/2.5/weather?";
+	
+	if (CityID !== 0)
+		URL += "id="+CityID.toString();
+	else if (posLat != "0" && posLon != "0")
+		URL += "lat=" + posLat + "&lon=" + posLon;
+	else
+		return; //Error
+	
+	URL += "&unit=metric&lang=de&type=accurate";
+	console.log("UpdateURL: " + URL);
+	req.open("GET", URL, true);
+	req.onload = function(e) {
+		if (req.readyState == 4) {
+			if (req.status == 200) {
+				var response = JSON.parse(req.responseText);
+				var temp = response.main.temp-273.15;
+				var cond = response.weather[0].description;
+				var icon = response.weather[0].icon;
+				var name = response.name;
+				sendMessageToPebble({
+					"W_TEMP": temp,
+					"W_COND": cond,
+					"W_ICON": weatherIcon[icon],
+					"W_CITY": name
+				});
+			}
+		}
+	};
+	req.send(null);
+}
 
 function downloadBinaryResource(imageURL, callback, errorCallback) {
 	var req = new XMLHttpRequest();
@@ -200,17 +240,33 @@ Pebble.addEventListener('showConfiguration',
 		console.log("stored options: " + JSON.stringify(options));
 		console.log("showing configuration");
 
-		var uri = 'http://panicman.byto.de/config_htcsense.html?title=HTC%20Sense%206.3%20v1.0';
+		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.0';
 		if (options !== null) {
 			uri += 
-				'&theme=' + encodeURIComponent(options.theme) + 
-				'&fsm=' + encodeURIComponent(options.fsm) + 
-				'&inv=' + encodeURIComponent(options.inv) + 
-				'&anim=' + encodeURIComponent(options.anim) + 
-				'&sep=' + encodeURIComponent(options.sep) +
-				'&datefmt=' + encodeURIComponent(options.datefmt) + 
+				'&ampm=' + encodeURIComponent(options.ampm) + 
 				'&smart=' + encodeURIComponent(options.smart) + 
-				'&vibr=' + encodeURIComponent(options.vibr);
+				'&firstwd=' + encodeURIComponent(options.firstwd) + 
+				'&grid=' + encodeURIComponent(options.grid) + 
+				'&invert=' + encodeURIComponent(options.invert) + 
+				'&showmy=' + encodeURIComponent(options.showmy) + 
+				'&preweeks=' + encodeURIComponent(options.preweeks) + 
+				'&weather=' + encodeURIComponent(options.weather) + 
+				'&weather_fc=' + encodeURIComponent(options.weather_fc) + 
+				'&units=' + encodeURIComponent(options.units) + 
+				'&update=' + encodeURIComponent(options.update) + 
+				'&cityid=' + encodeURIComponent(options.cityid) + 
+				'&col_bg=' + encodeURIComponent(options.col_bg) + 
+				'&col_calbg=' + encodeURIComponent(options.col_calbg) + 
+				'&col_calgr=' + encodeURIComponent(options.col_calgr) + 
+				'&col_caltx=' + encodeURIComponent(options.col_caltx) + 
+				'&col_calhl=' + encodeURIComponent(options.col_calhl) + 
+				'&col_calmy=' + encodeURIComponent(options.col_calmy) + 
+				'&vibr_all=' + encodeURIComponent(options.vibr_all) + 
+				'&quietf=' + encodeURIComponent(options.quietf) + 
+				'&quiett=' + encodeURIComponent(options.quiett) + 
+				'&vibr_hr=' + encodeURIComponent(options.vibr_hr) + 
+				'&vibr_bl=' + encodeURIComponent(options.vibr_bl) + 
+				'&vibr_bc=' + encodeURIComponent(options.vibr_bc);
 		}
 		console.log("Uri: " + uri);
 		Pebble.openURL(uri);
@@ -224,7 +280,14 @@ Pebble.addEventListener('webviewclosed',
 			var options = JSON.parse(decodeURIComponent(e.response));
 			console.log("storing options: " + JSON.stringify(options));
 			localStorage.setItem('htc_sense_opt', JSON.stringify(options));
-			sendMessageToPebble(options);
+			Pebble.sendAppMessage(options, 
+				function(e) {
+					console.log('Successfully delivered message (' + e.payload + ') with transactionId='+ e.data.transactionId);
+				},
+				function(e) {
+					console.log('Unable to deliver message with transactionId=' + e.data.transactionId + ' Error is: ' + e.error.message);
+				}
+	);
 		} else {
 			console.log("no options received");
 		}

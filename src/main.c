@@ -1,39 +1,182 @@
 #include <pebble.h>
-#include "gbitmap_tools.h"
+#include <time.h>
+	
+//#include "gbitmap_tools.h"
 #include "netdownload.h"
 
 enum DataKeys {
+	JS_READY=0,
 	W_CKEY=1,
 	W_TEMP=2,
 	W_COND=3,
 	W_ICON=4,
-	W_CITY=5
+	W_CITY=5,
+	W_CKEY_FC=6,
+	W_DATE_FC=7,
+	W_TEMP_H_FC=8,
+	W_TEMP_L_FC=9,
+	W_COND_FC=10,
+	W_ICON_FC=11,
+	W_CITY_FC=12,
+	C_AMPM=13,
+	C_SMART=14,
+	C_FIRSTWD=15,
+	C_GRID=16,
+	C_INVERT=17,
+	C_SHOWMY=18,
+	C_PREWEEKS=19,
+	C_WEATHER=20,
+	C_WEATHER_FC=21,
+	C_UNITS=22,
+	C_UPDATE=23,
+	C_CITYID=24,
+	C_COL_BG=25,
+	C_COL_CALBG=26,
+	C_COL_CALGR=27,
+	C_COL_CALTX=28,
+	C_COL_CALHL=29,
+	C_COL_CALMY=30,
+	C_VIBR_ALL=31,
+	C_QUIETF=32,
+	C_QUIETT=33,
+	C_VIBR_HR=34,
+	C_VIBR_BL=35,
+	C_VIBR_BC=36,
+	FC_DATE1=100,
+	FC_TEMP_H1=101,
+	FC_TEMP_L1=102,
+	FC_ICON1=103,
+	FC_COND1=104,
+	FC_DATE2=105,
+	FC_TEMP_H2=106,
+	FC_TEMP_L2=107,
+	FC_ICON2=108,
+	FC_COND2=109,
+	FC_DATE3=110,
+	FC_TEMP_H3=111,
+	FC_TEMP_L3=112,
+	FC_ICON3=113,
+	FC_COND3=114,
+	FC_DATE4=115,
+	FC_TEMP_H4=116,
+	FC_TEMP_L4=117,
+	FC_ICON4=118,
+	FC_COND4=119,
+	FC_DATE5=120,
+	FC_TEMP_H5=121,
+	FC_TEMP_L5=122,
+	FC_ICON5=123,
+	FC_COND5=124
 };	
 
-typedef struct persist {
-    uint32_t w_ckey;
-	int8_t w_temp;
+enum StorrageKeys {
+	PK_SETTINGS = 0
+};
+
+typedef struct {
+	int16_t w_temp;
 	uint8_t w_icon;
 	char w_cond[32];
 	char w_city[32];
-} __attribute__((__packed__)) persist;
+	GBitmap *w_bitmap;
+} Weather_Data;
 
-persist settings = {
-    .w_ckey = 2950159,	//Default: Berlin
+Weather_Data w_data = {
 	.w_temp = 127,		//no temp received jet
 	.w_icon = 0,
 	.w_cond = "\0",
-	.w_city = "\0"
+	.w_city = "\0",
+	.w_bitmap = NULL
+};
+
+typedef struct {
+    uint32_t date;
+	int8_t w_temp_h;
+	int8_t w_temp_l;
+	uint8_t w_icon;
+	char w_cond[32];
+	Layer *w_layer;
+	GBitmap *w_bitmap;
+} Forecast_Data;
+
+Forecast_Data fc_data[] = {
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL }
+};
+
+typedef struct {
+	//General
+	bool ampm, smart;
+	//Calendar
+	bool firstwd, grid, invert, showmy;
+	uint8_t preweeks;
+	//Weather
+	bool weather, weather_fc, units;
+	uint8_t update;
+	uint32_t cityid;
+	//Colors
+	char col_bg[7], col_calbg[7], col_calgr[7], col_caltx[7], col_calhl[7], col_calmy[7];
+	//Vibrations
+	bool vibr_all;
+	uint8_t quietf, quiett, vibr_hr, vibr_bl, vibr_bc;
+} __attribute__((__packed__)) Settings_Data;
+
+Settings_Data settings = {
+	.ampm = false,
+	.smart = true,
+	.firstwd = false,	//So=true, Mo=false
+	.grid = true,
+	.invert = true,
+	.showmy = true,
+	.preweeks = 1,
+	.weather = true,
+	.weather_fc = true,
+	.units = false,		//°C = false, °F = °C × 1,8 + 32
+	.update = 60,		//minutes
+    .cityid = 2817220,	//Default: 0 (Berlin=2950159, VS=2817220)
+	.col_bg = "000000",
+	.col_calbg = "000055",
+	.col_calgr = "aaaaaa",
+	.col_caltx = "ffffff",
+	.col_calhl = "ffffff",
+	.col_calmy = "ffffff",
+	.vibr_all = true,
+	.quietf = 22,
+	.quiett = 6,
+	.vibr_hr = 0, 
+	.vibr_bl = 3, 
+	.vibr_bc = 0
 };
 
 static Window *s_main_window;
 static Layer *s_clock_layer, *s_cal_layer;
-static GBitmap *s_ClockBG, *s_Numbers, *s_WeatherCurr;
+BitmapLayer *radio_layer, *battery_layer;
+TextLayer* fc_location_layer;
+static GBitmap *s_ClockBG, *s_Numbers, *s_BmpBattAkt, *s_BmpRadio, *s_StatusAll;
 static GFont s_TempFont, s_CondFont;
-static uint8_t s_HH, s_MM, s_SS;
-static AppTimer *timer_weather;
+static uint8_t s_HH, s_MM, s_SS, aktBatt, aktBattAnim;
+static AppTimer *timer_weather, *timer_batt, *timer_request;
 static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png";
- 
+static bool s_bWeatherUpdateRetry, s_bCharging;
+
+//-----------------------------------------------------------------------------------------------------------------------
+uint32_t HexToInt(char* hexstring)
+{
+	uint32_t nRet = 0, nPow;
+	uint8_t len = strlen(hexstring), rem = 0;
+	if (len >= 2 && (hexstring[1] == 'x' || hexstring[1] == 'X')) rem = 2; //remove 0x
+	for (uint8_t i=0; i<len-rem; i++) {
+		char x = hexstring[len-i-1];
+		uint8_t num = (x >= '0' && x <= '9') ? x-'0' : (x >= 'A' && x <= 'F') ? x-'A'+10 : x-'a'+10;
+		if (i == 0 || num == 0) nPow = 1; 								//16^0
+		else { nPow = 16; for (uint8_t j=0; j<i-1; j++) nPow *= 16; }	//16^i
+		nRet += nPow*num;
+	}
+	return nRet;
+}
 //-----------------------------------------------------------------------------------------------------------------------
 static void clock_layer_update_callback(Layer *layer, GContext* ctx) 
 {
@@ -47,8 +190,8 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 	uint8_t nNr, x, y=5;
 	for (int i=0; i<4; i++)
 	{
-		if (i == 0) { x=4; nNr = s_HH / 10; }		//Hour tens
-		else if (i == 1) { x=35; nNr = s_HH % 10; }	//Hour ones
+		if (i == 0) { x=4; nNr = (s_HH % (settings.ampm ? 12 : 24)) / 10; }		//Hour tens
+		else if (i == 1) { x=35; nNr = (s_HH % (settings.ampm ? 12 : 24)) % 10; }	//Hour ones
 		else if (i == 2) { x=73; nNr = s_MM / 10; }	//Minute tens
 		else if (i == 3) { x=104; nNr = s_MM % 10; }//Minute ones
 		
@@ -58,27 +201,187 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 	}
 	
 	//Weather, only if a valid temperature exist
-	if (settings.w_temp < 127)
+	if (w_data.w_temp < 127 && settings.weather)
 	{
 		graphics_context_set_text_color(ctx, GColorWhite);
-		graphics_draw_text(ctx, settings.w_city, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(4, 60, 96, 14 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-		graphics_draw_text(ctx, settings.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+		graphics_draw_text(ctx, w_data.w_city, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(4, 60, 96, 14 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+		graphics_draw_text(ctx, w_data.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
 		char sTemp[] = "-00.0°";
-		snprintf(sTemp, sizeof(sTemp), "%d°", settings.w_temp);
+		snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)w_data.w_temp * 1.8 + 32) : w_data.w_temp)); //°C or °F?
 		GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
-		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-3, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
+		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-5, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
 
-		if (s_WeatherCurr)
-			graphics_draw_bitmap_in_rect(ctx, s_WeatherCurr, GRect(bg_size.w/2-60/2, bg_size.h-50, 60, 50));
+		if (w_data.w_bitmap)
+			graphics_draw_bitmap_in_rect(ctx, w_data.w_bitmap, GRect(bg_size.w/2-60/2, bg_size.h-50-5, 60, 50));
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void cal_layer_update_callback(Layer *layer, GContext* ctx) 
 {
-	GRect rcBG = layer_get_frame(layer);
-	graphics_context_set_stroke_color(ctx, GColorWhite);
-	graphics_draw_round_rect(ctx, GRect(0,0,rcBG.size.w,rcBG.size.h), 5);
+	GRect rcFrame = layer_get_frame(layer);
+
+	//Get a time structure
+	time_t timeAkt = time(NULL);
+	struct tm *tmAkt = localtime(&timeAkt);
+	uint8_t wdAkt = tmAkt->tm_wday;
+	
+	int8_t cal_days = 7,	// number of columns (days of the week)
+		cal_weeks = 3,		// always display 3 weeks: # previous, current, # next
+		cal_width = 20,		// width of columns
+		cal_height = (settings.smart || settings.showmy) ? 14 : 18,		// height of columns, depens on if we need space on the bottom
+		cal_vgap = -1,		// vertical gap
+		text_shift = (cal_height == 14) ? -2 : 0,
+		cal_border = 2; 	// side of calendar
+	
+	GFont current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+	GColor8 col_caltx = GColorFromHEX(HexToInt(settings.col_caltx)), 
+			col_calhl = GColorFromHEX(HexToInt(settings.col_calhl)), col_calhl_i = GColorFromHEX(0xFFFFFF-HexToInt(settings.col_calhl));
+	
+	//Calculate days visible bevore
+	time_t timeFirst = timeAkt - (settings.preweeks*7 + wdAkt + (settings.firstwd ? 0 : wdAkt == 0 ? 6 : -1)) * 86400;
+	
+	graphics_context_set_text_color(ctx, col_caltx);
+	graphics_context_set_stroke_color(ctx, GColorFromHEX(HexToInt(settings.col_calgr)));
+	
+	graphics_context_set_fill_color(ctx, GColorFromHEX(HexToInt(settings.col_calbg)));
+	graphics_fill_rect(ctx, GRect(0, 0, rcFrame.size.w, rcFrame.size.h), 5, GCornersTop);
+	
+	//All Week days
+	for (uint8_t col=0; col<cal_days; col++)
+	{
+		//Dynamic Weekday generation
+		char sWDay[] = "Mo";
+		time_t tmpTime = (3 + col + (settings.firstwd ? 0 : 1))*86400; //01.01.1970 was a Thursday
+		struct tm *tmTmp = localtime(&tmpTime);
+		strftime (sWDay, 3, "%a", tmTmp);
+		
+		//Today Weekday in Bold
+		if (tmTmp->tm_wday == wdAkt) 
+		{
+			current = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+			graphics_context_set_text_color(ctx, col_calhl);
+		}
+		
+		graphics_draw_text(ctx, sWDay, current, GRect(cal_width * col + cal_border, cal_vgap + text_shift, cal_width, cal_height), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+
+		//Vertical line not on the last one
+		if (col != cal_days-1 && settings.grid)
+			graphics_draw_line(ctx, GPoint(cal_width * (col+1) + cal_border, cal_height + cal_vgap), GPoint(cal_width * (col+1) + cal_border, (cal_weeks+1) * cal_height + cal_vgap));
+		
+		//Reset Font
+		if (tmTmp->tm_wday == wdAkt) 
+		{
+			current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+			graphics_context_set_text_color(ctx, col_caltx);
+		}
+
+		for (uint8_t row=0; row<cal_weeks; row++)
+		{
+			//Current Day
+			time_t timeCurr = timeFirst + (row*7 + col) * 86400;
+			struct tm *tmCurr = localtime(&timeCurr);
+			strftime (sWDay, 3, "%d", tmCurr);
+			
+			GRect rc = GRect(cal_width * col + cal_border, cal_height * (row+1) + cal_vgap, cal_width, cal_height);
+						
+			if (timeCurr == timeAkt)
+			{
+				current = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
+
+				if (settings.invert)
+				{
+					graphics_context_set_text_color(ctx, col_calhl_i);
+					graphics_context_set_fill_color(ctx, col_calhl);	
+					graphics_fill_rect(ctx, GRect(rc.origin.x+1, rc.origin.y, rc.size.w-1, rc.size.h), 0, GCornerNone);
+				}
+			}
+			
+			graphics_draw_text(ctx, sWDay, current, GRect(rc.origin.x, rc.origin.y + text_shift, rc.size.w, rc.size.h), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+			
+			if (timeCurr == timeAkt)
+			{
+				current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+				graphics_context_set_text_color(ctx, col_caltx);
+			}
+			
+			//Horizontal line
+			if (settings.grid)
+				graphics_draw_line(ctx, GPoint(cal_border, cal_vgap + cal_height * (row+1)), GPoint(rcFrame.size.w - cal_border - 1, cal_height * (row+1) + cal_vgap));
+			
+			//At the end, last line
+			if (row == cal_weeks-1 && (settings.smart || settings.showmy) && settings.grid) 
+				graphics_draw_line(ctx, GPoint(cal_border, cal_vgap + cal_height * (row+2)), GPoint(rcFrame.size.w - cal_border - 1, cal_height * (row+2) + cal_vgap));
+		}
+	}
+	
+	//Rect for the Bottom space
+	GRect rcBot = GRect(10, cal_vgap + cal_height * 4 + 1, rcFrame.size.w-10, rcFrame.size.h - (cal_vgap + cal_height * 4 + 1));
+	
+	//Draw Month and Year
+	if (settings.showmy)
+	{
+		char sMonYear[32];
+		tmAkt = localtime(&timeAkt);
+		strftime(sMonYear, sizeof(sMonYear), "%B, %G", tmAkt);
+		graphics_context_set_text_color(ctx, GColorFromHEX(HexToInt(settings.col_calmy)));
+		graphics_draw_text(ctx, sMonYear, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcBot.origin.x, rcBot.origin.y - 2, rcBot.size.w, rcBot.size.h), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void generate_vibe(uint8_t vibe_pattern_number) 
+{
+	//No Vbration in quiet time or if disabled
+	if (!settings.vibr_all || 
+		(settings.quietf != 0 && s_HH >= settings.quietf) || 
+		(settings.quiett != 0 && s_HH < settings.quietf))
+		return;
+	
+	vibes_cancel();
+	switch ( vibe_pattern_number ) {
+		case 0: // No Vibration
+			return;
+		case 1: // Single short
+			vibes_short_pulse();
+			break;
+		case 2: // Double short
+			vibes_double_pulse();
+			break;
+		case 3: // Triple
+			vibes_enqueue_custom_pattern( (VibePattern) {
+				.durations = (uint32_t []) {200, 100, 200, 100, 200},
+					.num_segments = 5
+			} );
+		case 4: // Long
+			vibes_long_pulse();
+			break;
+		case 5: // Subtle
+			vibes_enqueue_custom_pattern( (VibePattern) {
+				.durations = (uint32_t []) {50, 200, 50, 200, 50, 200, 50},
+					.num_segments = 7
+			} );
+			break;
+		case 6: // Less Subtle
+			vibes_enqueue_custom_pattern( (VibePattern) {
+				.durations = (uint32_t []) {100, 200, 100, 200, 100, 200, 100},
+					.num_segments = 7
+			} );
+			break;
+		case 7: // Not Subtle
+			vibes_enqueue_custom_pattern( (VibePattern) {
+				.durations = (uint32_t []) {500, 250, 500, 250, 500, 250, 500},
+					.num_segments = 7
+			} );
+			break;
+		case 8: // S-S-L-S-S
+			vibes_enqueue_custom_pattern( (VibePattern) {
+				.durations = (uint32_t []) {100, 100, 100, 100, 400, 400, 100, 100, 100},
+					.num_segments = 9
+			} );
+			break;
+		default: // No Vibration
+			return;
+	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void tick_handler(struct tm *tick_time, TimeUnits units_changed) 
@@ -86,12 +389,19 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed)
 	s_HH = tick_time->tm_hour;
 	s_MM = tick_time->tm_min;
 	s_SS = tick_time->tm_sec;
+	
 	layer_mark_dirty(s_clock_layer);
+	
+	if (s_MM == 0)
+		generate_vibe(settings.vibr_hr);
+		
+	if (s_MM == 0 || units_changed == HOUR_UNIT)
+		layer_mark_dirty(s_cal_layer);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static bool update_weather() 
 {
-	strcpy(settings.w_cond, "Updating...");
+	strcpy(w_data.w_cond, "Updating...");
 	layer_mark_dirty(s_clock_layer);
 
 	DictionaryIterator *iter;
@@ -103,69 +413,255 @@ static bool update_weather()
 		return false;
 	};
 
-	Tuplet val_ckey = TupletInteger(W_CKEY, settings.w_ckey);
+	Tuplet val_ckey = TupletInteger(W_CKEY, settings.cityid);
 	dict_write_tuplet(iter, &val_ckey);
 	dict_write_end(iter);
 
 	app_message_outbox_send();
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Send message with data: ckey=%d", (int)settings.w_ckey);
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Send message with data: ckey=%d", (int)settings.cityid);
 	return true;
 }
 //-----------------------------------------------------------------------------------------------------------------------
-static void timerCallback(void *data) 
+static void timerCallbackWeather(void *data) 
 {
-	update_weather();
+	if (s_bWeatherUpdateRetry)
+	{
+		update_weather();
+		timer_weather = app_timer_register(30000, timerCallbackWeather, NULL); //Try again in 30 sec
+	}
+	else if (settings.update != 0)
+	{
+		//Update was successfull, again in 5 min
+		s_bWeatherUpdateRetry = true;
+		timer_weather = app_timer_register(60000*settings.update, timerCallbackWeather, NULL);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackBattery(void *data) 
+{
+	if (s_bCharging)
+	{
+		int nImage = 10 - (aktBattAnim / 10);
+		
+		bitmap_layer_set_bitmap(battery_layer, NULL);
+		gbitmap_destroy(s_BmpBattAkt);
+		s_BmpBattAkt = gbitmap_create_as_sub_bitmap(s_StatusAll, GRect(10*nImage, 0, 10, 16));
+		bitmap_layer_set_bitmap(battery_layer, s_BmpBattAkt);
+
+		aktBattAnim += 10;
+		if (aktBattAnim > 100)
+			aktBattAnim = aktBatt;
+		timer_batt = app_timer_register(1000, timerCallbackBattery, NULL);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackRequest(void *data) 
+{
+	netdownload_request(AdressBuffer);
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void battery_state_service_handler(BatteryChargeState charge_state) 
+{
+	int nImage = 0;
+	aktBatt = charge_state.charge_percent;
+	
+	if (charge_state.is_charging)
+	{
+		if (!s_bCharging)
+		{
+			nImage = 10;
+			s_bCharging = true;
+			aktBattAnim = aktBatt;
+			timer_batt = app_timer_register(1000, timerCallbackBattery, NULL);
+		}
+	}
+	else
+	{
+		nImage = 10 - (aktBatt / 10);
+		s_bCharging = false;
+	}
+	
+	bitmap_layer_set_bitmap(battery_layer, NULL);
+	gbitmap_destroy(s_BmpBattAkt);
+	s_BmpBattAkt = gbitmap_create_as_sub_bitmap(s_StatusAll, GRect(10*nImage, 0, 10, 16));
+	bitmap_layer_set_bitmap(battery_layer, s_BmpBattAkt);
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void bluetooth_connection_handler(bool connected)
+{
+	layer_set_hidden(bitmap_layer_get_layer(radio_layer), connected != true);
+	generate_vibe(connected ? settings.vibr_bc : settings.vibr_bl);
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void update_configuration(void)
+{
+	if (persist_exists(PK_SETTINGS))
+		persist_read_data(PK_SETTINGS, &settings, sizeof(settings));
+
+	Layer *window_layer = window_get_root_layer(s_main_window);
+	window_set_background_color(s_main_window, GColorFromHEX(HexToInt(settings.col_bg)));
+	
+	layer_remove_from_parent(bitmap_layer_get_layer(radio_layer));
+	layer_remove_from_parent(bitmap_layer_get_layer(battery_layer));
+	if (settings.smart)
+	{
+		layer_add_child(window_layer, bitmap_layer_get_layer(radio_layer));
+		layer_add_child(window_layer, bitmap_layer_get_layer(battery_layer));
+	}
+
+	if (settings.weather_fc)
+		text_layer_set_text(fc_location_layer, w_data.w_city);
+	
+	//Get a time structure so that it doesn't start blank
+	time_t temp = time(NULL);
+	struct tm *t = localtime(&temp);
+	tick_handler(t, HOUR_UNIT);
+
+	//Set Battery state
+	BatteryChargeState btchg = battery_state_service_peek();
+	battery_state_service_handler(btchg);
+	
+	//Set Bluetooth state
+	bool connected = bluetooth_connection_service_peek();
+	bluetooth_connection_handler(connected);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void in_received_handler(DictionaryIterator *received, void *context) 
 {
 	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Received data:");
+	bool bSaveSettings = false;
 	
 	Tuple *akt_tuple = dict_read_first(received);
     while (akt_tuple)
     {
-        app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "KEY %d=%s/%d", (int16_t)akt_tuple->key, akt_tuple->value->cstring, akt_tuple->value->int16);
+		int intVal = atoi(akt_tuple->value->cstring);
+        app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "KEY %d=%s/%d/%d", (int16_t)akt_tuple->key, akt_tuple->value->cstring, akt_tuple->value->int16, intVal);
 
-		if (akt_tuple->key == W_CKEY)
+		switch (akt_tuple->key) 
 		{
-			settings.w_ckey = akt_tuple->value->int32;
-			persist_write_int(W_CKEY, akt_tuple->value->int32);
+		case JS_READY:
+			s_bWeatherUpdateRetry = true;
+			timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
+			break;
+		case W_TEMP:
+			w_data.w_temp = akt_tuple->value->int16;
+			s_bWeatherUpdateRetry = false; //Update successful, usual update wait time
+			break;
+		case W_COND:
+			strcpy(w_data.w_cond, akt_tuple->value->cstring);
+			break;
+		case W_ICON:
+			w_data.w_icon = akt_tuple->value->int16;
+			break;
+		case W_CITY:
+			strcpy(w_data.w_city, akt_tuple->value->cstring);
+			break;
+		case C_AMPM:
+			settings.ampm = (strcmp(akt_tuple->value->cstring, "12h") == 0);
+			bSaveSettings = true; //One of the settings, so we came from the Settings Page, save them
+			break;
+		case C_SMART:
+			settings.smart = (intVal == 1);
+			break;
+		case C_FIRSTWD:
+			settings.firstwd = (strcmp(akt_tuple->value->cstring, "so") == 0);
+			break;
+		case C_GRID:
+			settings.grid = (intVal == 1);
+			break;
+		case C_INVERT:
+			settings.invert = (intVal == 1);
+			break;
+		case C_SHOWMY:
+			settings.showmy = (intVal == 1);
+			break;
+		case C_PREWEEKS:
+			settings.preweeks = intVal;
+			break;
+		case C_WEATHER:
+			settings.weather = (intVal == 1);
+			break;
+		case C_WEATHER_FC:
+			settings.weather_fc = (intVal == 1);
+			break;
+		case C_UNITS:
+			settings.units = (strcmp(akt_tuple->value->cstring, "f") == 0);
+			break;
+		case C_UPDATE:
+			settings.update = intVal;
+			break;
+		case C_CITYID:
+			settings.cityid = intVal;
+			break;			
+		case C_COL_BG:
+			strcpy(settings.col_bg, akt_tuple->value->cstring);
+			break;
+		case C_COL_CALBG:
+			strcpy(settings.col_calbg, akt_tuple->value->cstring);
+			break;
+		case C_COL_CALGR:
+			strcpy(settings.col_calgr, akt_tuple->value->cstring);
+			break;
+		case C_COL_CALTX:
+			strcpy(settings.col_caltx, akt_tuple->value->cstring);
+			break;
+		case C_COL_CALHL:
+			strcpy(settings.col_calhl, akt_tuple->value->cstring);
+			break;
+		case C_COL_CALMY:
+			strcpy(settings.col_calmy, akt_tuple->value->cstring);
+			break;
+		case C_VIBR_ALL:
+			settings.vibr_all = (intVal == 1);
+			break;
+		case C_QUIETF:
+			settings.quietf = intVal;
+			break;
+		case C_QUIETT:
+			settings.quiett = intVal;
+			break;
+		case C_VIBR_HR:
+			settings.vibr_hr = intVal;
+			break;
+		case C_VIBR_BL:
+			settings.vibr_bl = intVal;
+			break;
+		case C_VIBR_BC:
+			settings.vibr_bc = intVal;
+			break;
 		}
-	
-		if (akt_tuple->key == W_TEMP)
-			settings.w_temp = akt_tuple->value->int16;
-	
-		if (akt_tuple->key == W_COND)
-			strcpy(settings.w_cond, akt_tuple->value->cstring);
-	
-		if (akt_tuple->key == W_ICON)
-			settings.w_icon = akt_tuple->value->int16;
-	
-		if (akt_tuple->key == W_CITY)
-			strcpy(settings.w_city, akt_tuple->value->cstring);
 			
 		akt_tuple = dict_read_next(received);
 	}
 
-	//Destroy old weather icon
-	if (s_WeatherCurr) {
-		gbitmap_destroy(s_WeatherCurr);
-		s_WeatherCurr = NULL;
-	}
-	
 	//Load new weather icon
-	if (settings.w_icon <= 12)
+	if (!s_bWeatherUpdateRetry && w_data.w_icon <= 12)
 	{
-		snprintf(AdressBuffer, sizeof(AdressBuffer), "http://panicman.github.io/images/weather_big%d.png", settings.w_icon);
+		snprintf(AdressBuffer, sizeof(AdressBuffer), "http://panicman.github.io/images/weather_big%d.png", w_data.w_icon);
 		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Requesting image: %s", AdressBuffer);
 		netdownload_request(AdressBuffer);
 	}
 	
-	//Update clock (Weather) layer
-	layer_mark_dirty(s_clock_layer);
+	//Save Configuration
+	if (bSaveSettings) 
+	{
+		int result = persist_write_data(PK_SETTINGS, &settings, sizeof(settings) );
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Wrote %d bytes into settings", result);
+		
+		//Update Weather
+		if (settings.weather)
+		{
+			s_bWeatherUpdateRetry = true;
+			timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
+		}
+
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "ampm=%s, smart=%s, showmy=%s", settings.ampm ? "true" : "false", settings.smart ? "true" : "false", settings.showmy ? "true" : "false");
+		update_configuration();
+	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
-void download_complete_handler(NetDownload *download) {
+void download_complete_handler(NetDownload *download) 
+{
 	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Loaded image with %u bytes, Heap free is %lu bytes", (unsigned int)download->length, (long unsigned int)heap_bytes_free());
 	
 	//Create Bitmap from png data
@@ -175,9 +671,9 @@ void download_complete_handler(NetDownload *download) {
 	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Created Image with Dimensions: %dx%d", rcBmp.size.w, rcBmp.size.h);
 
 	// Save pointer to currently shown bitmap (to free it)
-	if (s_WeatherCurr) 
-		gbitmap_destroy(s_WeatherCurr);
-	s_WeatherCurr = bmp;
+	if (w_data.w_bitmap) 
+		gbitmap_destroy(w_data.w_bitmap);
+	w_data.w_bitmap = bmp;
 	
 	//Update Weather layer
 	layer_mark_dirty(s_clock_layer);
@@ -188,6 +684,15 @@ void download_complete_handler(NetDownload *download) {
 	netdownload_destroy(download);
 }
 //-----------------------------------------------------------------------------------------------------------------------
+void download_error_handler(DictionaryIterator *iter, AppMessageResult reason, void *context)
+{
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "custom error handler,  %s ", netdownload_translate_error(reason));
+	
+	//Request again in 5sec
+	if (reason == APP_MSG_SEND_TIMEOUT)
+		timer_request = app_timer_register(5000, timerCallbackRequest, NULL);
+}
+//-----------------------------------------------------------------------------------------------------------------------
 static void main_window_load(Window *window) 
 {
 	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Initial Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
@@ -195,13 +700,16 @@ static void main_window_load(Window *window)
 	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Glock BG loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_Numbers = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_NUMBERS);
 	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Numbers loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
-
+	s_StatusAll = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_SMART_STATUS);
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Smart status loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
+	s_BmpRadio = gbitmap_create_as_sub_bitmap(s_StatusAll, GRect(110, 0, 10, 16));
+	
 	s_TempFont = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_SUBSET_32));
 	s_CondFont = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_SUBSET_10));
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Fonts loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 
 	Layer *window_layer = window_get_root_layer(s_main_window);
 	GRect bounds = layer_get_frame(window_layer);
-	window_set_background_color(window, GColorBlue);
 
 	GRect rcClock = gbitmap_get_bounds(s_ClockBG);
 	s_clock_layer = layer_create(rcClock);
@@ -211,16 +719,41 @@ static void main_window_load(Window *window)
 	s_cal_layer = layer_create(GRect(0, rcClock.size.h, bounds.size.w, bounds.size.h-rcClock.size.h));
 	layer_set_update_proc(s_cal_layer, cal_layer_update_callback);
 	layer_add_child(window_layer, s_cal_layer);
+
+	//Init bluetooth radio
+	radio_layer = bitmap_layer_create(GRect(1, bounds.size.h-16, 10, 16));
+	bitmap_layer_set_background_color(radio_layer, GColorClear);
+	bitmap_layer_set_compositing_mode(radio_layer, GCompOpSet);
+	bitmap_layer_set_bitmap(radio_layer, s_BmpRadio);
+		
+	//Init battery
+	battery_layer = bitmap_layer_create(GRect(bounds.size.w-11, bounds.size.h-16, 10, 16)); 
+	bitmap_layer_set_background_color(battery_layer, GColorClear);
+	bitmap_layer_set_compositing_mode(battery_layer, GCompOpSet);
+	
+	//Init Forecast Layer
+	fc_location_layer = text_layer_create(GRect(0, 0, bounds.size.w, 18));
+	text_layer_set_text_alignment(fc_location_layer, GTextAlignmentCenter);
+	text_layer_set_font(fc_location_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD));
+	text_layer_set_background_color(fc_location_layer, GColorBlack);
+	text_layer_set_text_color(fc_location_layer, GColorWhite);
+	//layer_add_child(window_layer, text_layer_get_layer(fc_location_layer));
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void main_window_unload(Window *window) 
 {
 	layer_destroy(s_cal_layer);
 	layer_destroy(s_clock_layer);
+	bitmap_layer_destroy(battery_layer);
+	bitmap_layer_destroy(radio_layer);
+	text_layer_destroy(fc_location_layer);
 	
 	gbitmap_destroy(s_ClockBG);
 	gbitmap_destroy(s_Numbers);
-	gbitmap_destroy(s_WeatherCurr);
+	gbitmap_destroy(s_BmpRadio);
+	gbitmap_destroy(s_BmpBattAkt);
+	gbitmap_destroy(s_StatusAll);
+	gbitmap_destroy(w_data.w_bitmap);
 	
 	fonts_unload_custom_font(s_TempFont);
 	fonts_unload_custom_font(s_CondFont);
@@ -229,8 +762,8 @@ static void main_window_unload(Window *window)
 static void init() 
 {
 	//Initialize dynamic weather image load
-	s_WeatherCurr = NULL;
-	netdownload_initialize(download_complete_handler, in_received_handler);
+	s_bWeatherUpdateRetry = true;
+	netdownload_initialize(download_complete_handler, in_received_handler, download_error_handler);
 	
 	s_main_window = window_create();
 	window_set_window_handlers(s_main_window, (WindowHandlers) {
@@ -239,32 +772,23 @@ static void init()
 	});
 	window_stack_push(s_main_window, true);
 	
+	//Subscribe ticks
 	tick_timer_service_subscribe(MINUTE_UNIT, (TickHandler)tick_handler);
+
+	//Subscribe smart status
+	battery_state_service_subscribe(&battery_state_service_handler);
+	bluetooth_connection_service_subscribe(&bluetooth_connection_handler);
 	
-	//Get a time structure so that it doesn't start blank
-	time_t temp = time(NULL);
-	struct tm *t = localtime(&temp);
-
-	//Manually call the tick handler when the window is loading
-	tick_handler(t, MINUTE_UNIT);
-
-/*	
-	//Configure app messages
-    app_message_register_inbox_received(in_received_handler);
-    const uint32_t inbound_size = 128;
-    const uint32_t outbound_size = 128;
-    app_message_open(inbound_size, outbound_size);
-*/	
-	timer_weather = app_timer_register(1000, timerCallback, NULL);
+	//Initialize configuration
+	update_configuration();
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void deinit() 
 {
-	if (s_WeatherCurr) 
-		
-
 	netdownload_deinitialize(); // call this to avoid 20B memory leak
 	app_timer_cancel(timer_weather);
+	app_timer_cancel(timer_batt);
+	app_timer_cancel(timer_request);
 	tick_timer_service_unsubscribe();
 	window_destroy(s_main_window);
 }

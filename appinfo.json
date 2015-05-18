@@ -1,5 +1,31 @@
 {
     "appKeys": {
+        "FC_COND1": 104,
+        "FC_COND2": 109,
+        "FC_COND3": 114,
+        "FC_COND4": 119,
+        "FC_COND5": 124,
+        "FC_DATE1": 100,
+        "FC_DATE2": 105,
+        "FC_DATE3": 110,
+        "FC_DATE4": 115,
+        "FC_DATE5": 120,
+        "FC_ICON1": 103,
+        "FC_ICON2": 108,
+        "FC_ICON3": 113,
+        "FC_ICON4": 116,
+        "FC_ICON5": 123,
+        "FC_TEMP_H1": 101,
+        "FC_TEMP_H2": 106,
+        "FC_TEMP_H3": 111,
+        "FC_TEMP_H4": 116,
+        "FC_TEMP_H5": 121,
+        "FC_TEMP_L1": 102,
+        "FC_TEMP_L2": 107,
+        "FC_TEMP_L3": 112,
+        "FC_TEMP_L4": 117,
+        "FC_TEMP_L5": 122,
+        "JS_READY": 0,
         "NETDL_BEGIN": 1768777473,
         "NETDL_CHUNK_SIZE": 1768777475,
         "NETDL_DATA": 1768777472,
@@ -9,9 +35,34 @@
         "W_CKEY": 1,
         "W_COND": 3,
         "W_ICON": 4,
-        "W_TEMP": 2
+        "W_TEMP": 2,
+        "ampm": 13,
+        "cityid": 24,
+        "col_bg": 25,
+        "col_calbg": 26,
+        "col_calgr": 27,
+        "col_calhl": 29,
+        "col_calmy": 30,
+        "col_caltx": 28,
+        "firstwd": 15,
+        "grid": 16,
+        "invert": 17,
+        "preweeks": 19,
+        "quietf": 32,
+        "quiett": 33,
+        "showmy": 18,
+        "smart": 14,
+        "units": 22,
+        "update": 23,
+        "vibr_all": 31,
+        "vibr_bc": 36,
+        "vibr_bl": 35,
+        "vibr_hr": 34,
+        "weather": 20,
+        "weather_fc": 21
     },
     "capabilities": [
+        "location",
         "configurable"
     ],
     "companyName": "PanicMan",
@@ -19,6 +70,11 @@
     "projectType": "native",
     "resources": {
         "media": [
+            {
+                "file": "images/Battery.png",
+                "name": "IMAGE_SMART_STATUS",
+                "type": "png"
+            },
             {
                 "file": "images/numbers.png",
                 "name": "IMAGE_NUMBERS",
@@ -30,16 +86,17 @@
                 "type": "png"
             },
             {
+                "characterRegex": "[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df. ]",
+                "file": "fonts/DroidSans.ttf",
+                "name": "FONT_ROBOTO_SUBSET_10",
+                "trackingAdjust": -1,
+                "type": "font"
+            },
+            {
                 "characterRegex": "[0-9,\u00b0-]",
                 "file": "fonts/DroidSans.ttf",
                 "name": "FONT_ROBOTO_SUBSET_32",
                 "trackingAdjust": -2,
-                "type": "font"
-            },
-            {
-                "characterRegex": "[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df ]",
-                "file": "fonts/DroidSans.ttf",
-                "name": "FONT_ROBOTO_SUBSET_10",
                 "type": "font"
             }
         ]
@@ -50,7 +107,6 @@
         "basalt"
     ],
     "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
-    "versionCode": 1,
     "versionLabel": "1.0",
     "watchapp": {
         "watchface": true

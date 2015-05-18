@@ -22,6 +22,7 @@ typedef struct {
 
 typedef void (*NetDownloadCallback)(NetDownload *image);
 typedef void (*CustomReceivedHandler)(DictionaryIterator *received, void *context);
+typedef void (*CustomErrorHandler)(DictionaryIterator *iter, AppMessageResult reason, void *context);
 
 typedef struct {
   /* size of the data buffer allocated */
@@ -34,9 +35,11 @@ typedef struct {
   NetDownloadCallback callback;
   /* Callback to call when received any other messages */
   CustomReceivedHandler custom_handler_callback;
+  /* Callback to call when any error occurs */
+  CustomErrorHandler custom_error_callback;
 } NetDownloadContext;
 
-NetDownloadContext* netdownload_create_context(NetDownloadCallback callback, CustomReceivedHandler custom_handler_callback);
+NetDownloadContext* netdownload_create_context(NetDownloadCallback callback, CustomReceivedHandler custom_handler_callback, CustomErrorHandler custom_error_callback);
 
 void netdownload_initialize();
 void netdownload_deinitialize();
@@ -46,6 +49,7 @@ void netdownload_request(char *url);
 // Call this when you are done using an image to properly free memory.
 void netdownload_destroy(NetDownload *image);
 
+char* netdownload_translate_error(AppMessageResult result);
 void netdownload_receive(DictionaryIterator *iter, void *context);
 void netdownload_dropped(AppMessageResult reason, void *context);
 void netdownload_out_success(DictionaryIterator *iter, void *context);
