@@ -1,5 +1,6 @@
 {
     "appKeys": {
+        "FC_CKEY": 99,
         "FC_COND1": 104,
         "FC_COND2": 109,
         "FC_COND3": 114,
@@ -13,7 +14,7 @@
         "FC_ICON1": 103,
         "FC_ICON2": 108,
         "FC_ICON3": 113,
-        "FC_ICON4": 116,
+        "FC_ICON4": 118,
         "FC_ICON5": 123,
         "FC_TEMP_H1": 101,
         "FC_TEMP_H2": 106,
@@ -86,10 +87,9 @@
                 "type": "png"
             },
             {
-                "characterRegex": "[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df. ]",
+                "characterRegex": "[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df\u00c0\u00c2\u00c4\u00c1\u00c8\u00c9\u00ca\u00cb\u00ce\u00cf\u00cd\u00d4\u00d3\u0152\u00d9\u00db\u00dc\u00da\u0178\u00d1\u00e0\u00e2\u00e4\u00e1\u00e8\u00e9\u00ea\u00eb\u00ee\u00ef\u00ed\u00f4\u00f3\u0153\u00f9\u00fb\u00fc\u00fa\u00ff\u00c7\u00e7\u00f1\u00bf\u00a1\u00ba\u00aa. ]",
                 "file": "fonts/DroidSans.ttf",
                 "name": "FONT_ROBOTO_SUBSET_10",
-                "trackingAdjust": -1,
                 "type": "font"
             },
             {

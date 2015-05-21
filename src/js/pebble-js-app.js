@@ -1,7 +1,11 @@
+//Message Queue to send arrays to pebble. https://github.com/smallstoneapps/js-message-queue
+var MessageQueue=function(){var RETRY_MAX=5;var queue=[];var sending=false;var timer=null;return{reset:reset,sendAppMessage:sendAppMessage,size:size};function reset(){queue=[];sending=false}function sendAppMessage(message,ack,nack){if(!isValidMessage(message)){return false}queue.push({message:message,ack:ack||null,nack:nack||null,attempts:0});setTimeout(function(){sendNextMessage()},1);return true}function size(){return queue.length}function isValidMessage(message){if(message!==Object(message)){return false}var keys=Object.keys(message);if(!keys.length){return false}for(var k=0;k<keys.length;k+=1){var validKey=/^[0-9a-zA-Z-_]*$/.test(keys[k]);if(!validKey){return false}var value=message[keys[k]];if(!validValue(value)){return false}}return true;function validValue(value){switch(typeof value){case"string":return true;case"number":return true;case"object":if(toString.call(value)=="[object Array]"){return true}}return false}}function sendNextMessage(){if(sending){return}var message=queue.shift();if(!message){return}message.attempts+=1;sending=true;Pebble.sendAppMessage(message.message,ack,nack);timer=setTimeout(function(){timeout()},1e3);function ack(){clearTimeout(timer);setTimeout(function(){sending=false;sendNextMessage()},200);if(message.ack){message.ack.apply(null,arguments)}}function nack(){clearTimeout(timer);if(message.attempts<RETRY_MAX){queue.unshift(message);setTimeout(function(){sending=false;sendNextMessage()},200*message.attempts)}else{if(message.nack){message.nack.apply(null,arguments)}}}function timeout(){setTimeout(function(){sending=false;sendNextMessage()},1e3);if(message.ack){message.ack.apply(null,arguments)}}}}();
+
 var initialised = false;
 var transferInProgress = false;
-var CityID = 0, posLat = "0", posLon = "0";
-
+var forecastWeatherFetch = false;
+var CityID = 0, posLat = "0", posLon = "0", lang = "en";
+//-----------------------------------------------------------------------------------------------------------------------
 //http://panicman.github.io/images/weather_big0-12.png
 var weatherIcon = {
     "01d" : 0,
@@ -45,35 +49,60 @@ var weatherIconMini = {
     "13n" : 7,
     "50n" : 8
 };
-
+//-----------------------------------------------------------------------------------------------------------------------
 //-- Get current location: http://forums.getpebble.com/discussion/21755/pebble-js-location-to-url
 var locationOptions = {
 	enableHighAccuracy: true, 
 	maximumAge: 10000, 
 	timeout: 10000
 };
-
+//-----------------------------------------------------------------------------------------------------------------------
 function locationSuccess(pos) {
 	console.log('lat= ' + pos.coords.latitude + ' lon= ' + pos.coords.longitude);
 	posLat = (pos.coords.latitude).toFixed(3);
 	posLon = (pos.coords.longitude).toFixed(3);
-	updateWeather();
+	
+	if (forecastWeatherFetch === false)
+		updateWeather();
+	else
+		updateWeatherForecast();
 }
-
+//-----------------------------------------------------------------------------------------------------------------------
 function locationError(err) {
 	posLat = "0";
 	posLon = "0";
 	console.log('location error (' + err.code + '): ' + err.message);
 }
-
+//-----------------------------------------------------------------------------------------------------------------------
 Pebble.addEventListener('ready', 
 	function(e) {
 		initialised = true;
-		console.log('JavaScript app ready and running!');
+		var p_lang = "en_US";
+		
+		//Get pebble language
+		if(Pebble.getActiveWatchInfo) {
+			var watch = Pebble.getActiveWatchInfo();
+			p_lang = watch.language;
+		}
+		
+		//Choose language
+		var sub = p_lang.substring(0, 2);
+		if (sub === "de")
+			lang = "de";
+		else  if (sub === "es")
+			lang = "es";
+		else if (sub === "fr")
+			lang = "fr";
+		else if (sub === "it")
+			lang = "it";
+		else
+			lang = "en";
+
+		console.log("JavaScript app ready and running! Pebble lang: " + p_lang + ", using for Weather: " + lang);
 		sendMessageToPebble({"JS_READY": 1});		
 	}
 );
-
+//-----------------------------------------------------------------------------------------------------------------------
 function sendMessageToPebble(payload) {
 	Pebble.sendAppMessage(payload, 
 		function(e) {
@@ -84,7 +113,7 @@ function sendMessageToPebble(payload) {
 		}
 	);
 }
-
+//-----------------------------------------------------------------------------------------------------------------------
 Pebble.addEventListener('appmessage',
     function(e) {
 		console.log("Got message: " + JSON.stringify(e));
@@ -110,14 +139,23 @@ Pebble.addEventListener('appmessage',
 		}
 		else if ('W_CKEY' in e.payload) {	//Weather Download
 			CityID = e.payload.W_CKEY;
+			forecastWeatherFetch = false;
 			if (CityID === 0)
 				navigator.geolocation.getCurrentPosition(locationSuccess, locationError, locationOptions);
 			else
 				updateWeather();
 		}
+		else if ('FC_CKEY' in e.payload) {	//Forecast Weather Download
+			CityID = e.payload.FC_CKEY;
+			forecastWeatherFetch = true;
+			if (CityID === 0)
+				navigator.geolocation.getCurrentPosition(locationSuccess, locationError, locationOptions);
+			else
+				updateWeatherForecast();
+		}
     }
 );
-
+//-----------------------------------------------------------------------------------------------------------------------
 function updateWeather() {
 	console.log("Updating weather");
 	var req = new XMLHttpRequest();
@@ -130,14 +168,14 @@ function updateWeather() {
 	else
 		return; //Error
 	
-	URL += "&unit=metric&lang=de&type=accurate";
+	URL += "&units=metric&lang=" + lang + "&type=accurate";
 	console.log("UpdateURL: " + URL);
 	req.open("GET", URL, true);
 	req.onload = function(e) {
 		if (req.readyState == 4) {
 			if (req.status == 200) {
 				var response = JSON.parse(req.responseText);
-				var temp = response.main.temp-273.15;
+				var temp = Math.round(response.main.temp);//-273.15
 				var cond = response.weather[0].description;
 				var icon = response.weather[0].icon;
 				var name = response.name;
@@ -152,7 +190,56 @@ function updateWeather() {
 	};
 	req.send(null);
 }
+//-----------------------------------------------------------------------------------------------------------------------
+function updateWeatherForecast() {
+	console.log("Updating weather forecast");
+	var req = new XMLHttpRequest();
+	var URL = "http://api.openweathermap.org/data/2.5/forecast/daily?";
+	
+	if (CityID !== 0)
+		URL += "id="+CityID.toString();
+	else if (posLat != "0" && posLon != "0")
+		URL += "lat=" + posLat + "&lon=" + posLon;
+	else
+		return; //Error
+	
+	URL += "&units=metric&lang=" + lang + "&type=accurate&cnt=6";
+	console.log("UpdateURL: " + URL);
+	req.responseType = "json";
+	req.open("GET", URL, true);
+	req.onreadystatechange = function(e) {
+		if (req.readyState == 4) {
+			if (req.status == 200) {
+				var response = req.response;//JSON.parse(req.responseText); No Need to parse as this is allready JSON Object
+				//console.log("Received Forecast Data: " + JSON.stringify(response)); Crashes if there is an umlaut/unicode
+				if ('cnt' in response && response.cnt > 1)
+				{
+					var message = {};
+					for (var i=1; i<response.cnt; i++) {
+						var k_dt = "FC_DATE"+i, dt = response.list[i].dt.toString();
+						var k_tl = "FC_TEMP_L"+i, temp_l = Math.round(response.list[i].temp.min);
+						var k_th = "FC_TEMP_H"+i, temp_h = Math.round(response.list[i].temp.max);
+						var k_cd = "FC_COND"+i, cond = response.list[i].weather[0].description;
+						var k_ic = "FC_ICON"+i, icon = response.list[i].weather[0].icon;
 
+                        message[k_dt] = dt;
+                        message[k_tl] = temp_l;
+                        message[k_th] = temp_h;
+                        message[k_cd] = cond;
+                        message[k_ic] = weatherIconMini[icon];
+					}
+					MessageQueue.sendAppMessage(message);
+				}
+				else
+					console.log("Count error: " + response.cnt);
+			}
+			else
+				console.log("Status error: " + req.status);
+		}
+	};
+	req.send(null);
+}
+//-----------------------------------------------------------------------------------------------------------------------
 function downloadBinaryResource(imageURL, callback, errorCallback) {
 	var req = new XMLHttpRequest();
 	req.open("GET", imageURL,true);
@@ -179,7 +266,7 @@ function downloadBinaryResource(imageURL, callback, errorCallback) {
 	};
 	req.send(null);
 }
-
+//-----------------------------------------------------------------------------------------------------------------------
 function transferImageBytes(bytes, chunkSize, successCb, failureCb) {
 	var retries = 0;
 	
@@ -233,7 +320,7 @@ function transferImageBytes(bytes, chunkSize, successCb, failureCb) {
 		failure
 	);
 }
-
+//-----------------------------------------------------------------------------------------------------------------------
 Pebble.addEventListener('showConfiguration', 
 	function(e) {
 		var options = JSON.parse(localStorage.getItem('htc_sense_opt'));
@@ -272,7 +359,7 @@ Pebble.addEventListener('showConfiguration',
 		Pebble.openURL(uri);
 	}
 );
-
+//-----------------------------------------------------------------------------------------------------------------------
 Pebble.addEventListener('webviewclosed', 
 	function(e) {
 		console.log("configuration closed");
@@ -293,3 +380,4 @@ Pebble.addEventListener('webviewclosed',
 		}
 	}
 );
+//-----------------------------------------------------------------------------------------------------------------------

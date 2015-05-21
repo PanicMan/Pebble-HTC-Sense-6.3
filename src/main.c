@@ -42,6 +42,7 @@ enum DataKeys {
 	C_VIBR_HR=34,
 	C_VIBR_BL=35,
 	C_VIBR_BC=36,
+	FC_CKEY=99,
 	FC_DATE1=100,
 	FC_TEMP_H1=101,
 	FC_TEMP_L1=102,
@@ -79,6 +80,12 @@ typedef struct {
 	char w_cond[32];
 	char w_city[32];
 	GBitmap *w_bitmap;
+	bool bPictureLoading;
+	bool bWeatherUpdateRetry;
+	//For forecast
+	bool bIsShowing;
+	int8_t nCurrFCIcon;
+	bool bWeatherFCUpdateRetry;
 } Weather_Data;
 
 Weather_Data w_data = {
@@ -86,7 +93,13 @@ Weather_Data w_data = {
 	.w_icon = 0,
 	.w_cond = "\0",
 	.w_city = "\0",
-	.w_bitmap = NULL
+	.w_bitmap = NULL,
+	.bPictureLoading = false,
+	.bWeatherUpdateRetry = true,
+	//For forecast
+	.bIsShowing = false,
+	.nCurrFCIcon = -1,
+	.bWeatherFCUpdateRetry = true
 };
 
 typedef struct {
@@ -109,7 +122,7 @@ Forecast_Data fc_data[] = {
 
 typedef struct {
 	//General
-	bool ampm, smart;
+	bool ampm, smart, debug;
 	//Calendar
 	bool firstwd, grid, invert, showmy;
 	uint8_t preweeks;
@@ -127,6 +140,7 @@ typedef struct {
 Settings_Data settings = {
 	.ampm = false,
 	.smart = true,
+	.debug = false,
 	.firstwd = false,	//So=true, Mo=false
 	.grid = true,
 	.invert = true,
@@ -157,10 +171,10 @@ BitmapLayer *radio_layer, *battery_layer;
 TextLayer* fc_location_layer;
 static GBitmap *s_ClockBG, *s_Numbers, *s_BmpBattAkt, *s_BmpRadio, *s_StatusAll;
 static GFont s_TempFont, s_CondFont;
-static uint8_t s_HH, s_MM, s_SS, aktBatt, aktBattAnim;
-static AppTimer *timer_weather, *timer_batt, *timer_request;
+static uint8_t s_HH, s_MM, s_SS, aktBatt, aktBattAnim, nDLRetries;
+static AppTimer *timer_weather, *timer_weather_fc, *timer_batt, *timer_request;
 static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png";
-static bool s_bWeatherUpdateRetry, s_bCharging;
+static bool s_bCharging;
 
 //-----------------------------------------------------------------------------------------------------------------------
 uint32_t HexToInt(char* hexstring)
@@ -329,6 +343,54 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
+static void fcx_layer_update_callback(Layer *layer, GContext* ctx) 
+{
+	char sTemp[32];
+	GRect rcFrame = layer_get_frame(layer);
+	graphics_context_set_compositing_mode(ctx, GCompOpSet);
+	
+	//Fill background black
+	graphics_context_set_fill_color(ctx, GColorBlack);	
+	graphics_fill_rect(ctx, GRect(0, 0, rcFrame.size.w, rcFrame.size.h), 0, GCornerNone);	
+	
+	//Get the layer number
+	uint8_t nAkt = 0;
+	while (layer != fc_data[nAkt].w_layer && nAkt<4)
+		nAkt++;
+
+	//Get a time structure
+	time_t timeAkt = fc_data[nAkt].date;
+	struct tm *tmAkt = localtime(&timeAkt);
+	
+	graphics_context_set_text_color(ctx, GColorWhite);
+	graphics_context_set_stroke_color(ctx, GColorLightGray);
+	
+	//Draw top line
+	graphics_draw_line(ctx, GPoint(0, 0), GPoint(rcFrame.size.w, 0));
+	
+	//Draw Icon
+	if (fc_data[nAkt].w_bitmap)
+		graphics_draw_bitmap_in_rect(ctx, fc_data[nAkt].w_bitmap, GRect(0, 0, 36, 30));
+	
+	//Draw Weekday
+	strftime(sTemp, sizeof(sTemp), "%A", tmAkt);
+	graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(36, 0, rcFrame.size.w-36-25, 20), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+	
+	//Draw condition
+	graphics_draw_text(ctx, fc_data[nAkt].w_cond, s_CondFont, GRect(36, 20-2-1, rcFrame.size.w-36-25, 10+2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+	
+	//Draw Temperatures
+	graphics_context_set_fill_color(ctx, GColorDarkCandyAppleRed);	
+	graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 1, 25, 14), 3, GCornersAll);	
+	snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_h * 1.8 + 32) : fc_data[nAkt].w_temp_h)); //°C or °F?
+	graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 1-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+
+	graphics_context_set_fill_color(ctx, GColorOxfordBlue);	
+	graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 16, 25, 14), 3, GCornersAll);	
+	snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_l * 1.8 + 32) : fc_data[nAkt].w_temp_l)); //°C or °F?
+	graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 16-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+}
+//-----------------------------------------------------------------------------------------------------------------------
 void generate_vibe(uint8_t vibe_pattern_number) 
 {
 	//No Vbration in quiet time or if disabled
@@ -409,7 +471,8 @@ static bool update_weather()
 
 	if (iter == NULL) 
 	{
-		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Iter is NULL!");
+		if (settings.debug)
+			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Iter is NULL!");
 		return false;
 	};
 
@@ -418,22 +481,62 @@ static bool update_weather()
 	dict_write_end(iter);
 
 	app_message_outbox_send();
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Send message with data: ckey=%d", (int)settings.cityid);
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Send message with data: w_ckey=%d", (int)settings.cityid);
 	return true;
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void timerCallbackWeather(void *data) 
 {
-	if (s_bWeatherUpdateRetry)
+	if (w_data.bWeatherUpdateRetry)
 	{
 		update_weather();
 		timer_weather = app_timer_register(30000, timerCallbackWeather, NULL); //Try again in 30 sec
 	}
 	else if (settings.update != 0)
 	{
-		//Update was successfull, again in 5 min
-		s_bWeatherUpdateRetry = true;
+		//Update was successfull, again in x min
+		w_data.bWeatherUpdateRetry = true;
 		timer_weather = app_timer_register(60000*settings.update, timerCallbackWeather, NULL);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static bool update_weather_forecast() 
+{
+	text_layer_set_text(fc_location_layer, "Updating...");
+
+	DictionaryIterator *iter;
+	app_message_outbox_begin(&iter);
+
+	if (iter == NULL) 
+	{
+		if (settings.debug)
+			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Iter is NULL!");
+		return false;
+	};
+
+	Tuplet val_ckey = TupletInteger(FC_CKEY, settings.cityid);
+	dict_write_tuplet(iter, &val_ckey);
+	dict_write_end(iter);
+
+	app_message_outbox_send();
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Send message with data: fc_ckey=%d", (int)settings.cityid);
+	return true;
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackWeatherForecast(void *data) 
+{
+	if (w_data.bWeatherFCUpdateRetry)
+	{
+		update_weather_forecast();
+		timer_weather_fc = app_timer_register(30000, timerCallbackWeatherForecast, NULL); //Try again in 30 sec
+	}
+	else if (settings.update != 0)
+	{
+		//Update was successfull, again in x min, allways 3 times longer
+		w_data.bWeatherFCUpdateRetry = true;
+		timer_weather_fc = app_timer_register(60000*settings.update*3, timerCallbackWeatherForecast, NULL);
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -453,11 +556,6 @@ static void timerCallbackBattery(void *data)
 			aktBattAnim = aktBatt;
 		timer_batt = app_timer_register(1000, timerCallbackBattery, NULL);
 	}
-}
-//-----------------------------------------------------------------------------------------------------------------------
-static void timerCallbackRequest(void *data) 
-{
-	netdownload_request(AdressBuffer);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void battery_state_service_handler(BatteryChargeState charge_state) 
@@ -507,10 +605,11 @@ static void update_configuration(void)
 	{
 		layer_add_child(window_layer, bitmap_layer_get_layer(radio_layer));
 		layer_add_child(window_layer, bitmap_layer_get_layer(battery_layer));
-	}
 
-	if (settings.weather_fc)
-		text_layer_set_text(fc_location_layer, w_data.w_city);
+		//Remove and add last forecast layer to be in front of smart layers
+		layer_remove_from_parent(fc_data[4].w_layer);
+		layer_add_child(window_layer, fc_data[4].w_layer);
+	}
 	
 	//Get a time structure so that it doesn't start blank
 	time_t temp = time(NULL);
@@ -524,34 +623,50 @@ static void update_configuration(void)
 	//Set Bluetooth state
 	bool connected = bluetooth_connection_service_peek();
 	bluetooth_connection_handler(connected);
+	
+}
+//-----------------------------------------------------------------------------------------------------------------------
+void load_picture(uint8_t nNr, bool bBig)
+{
+	if (bBig)
+		snprintf(AdressBuffer, sizeof(AdressBuffer), "http://panicman.github.io/images/weather_big%d.png", nNr);
+	else
+		snprintf(AdressBuffer, sizeof(AdressBuffer), "http://panicman.github.io/images/weather_mini%d.png",nNr);
+	
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Requesting image: %s", AdressBuffer);
+	nDLRetries = 10;
+	netdownload_request(AdressBuffer);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void in_received_handler(DictionaryIterator *received, void *context) 
 {
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Received data:");
-	bool bSaveSettings = false;
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Received data:");
+	bool bSaveSettings = false, bUpdateWeather = false, bLoadIcon = false, bLoadFCIcons = false;
 	
 	Tuple *akt_tuple = dict_read_first(received);
     while (akt_tuple)
     {
 		int intVal = atoi(akt_tuple->value->cstring);
-        app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "KEY %d=%s/%d/%d", (int16_t)akt_tuple->key, akt_tuple->value->cstring, akt_tuple->value->int16, intVal);
+ 		if (settings.debug)
+	       app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "KEY %d=%s/%d/%d", (int16_t)akt_tuple->key, akt_tuple->value->cstring, akt_tuple->value->int16, intVal);
 
 		switch (akt_tuple->key) 
 		{
 		case JS_READY:
-			s_bWeatherUpdateRetry = true;
-			timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
+			bUpdateWeather = true;
 			break;
 		case W_TEMP:
 			w_data.w_temp = akt_tuple->value->int16;
-			s_bWeatherUpdateRetry = false; //Update successful, usual update wait time
+			w_data.bWeatherUpdateRetry = false; //Update successful, usual update wait time
 			break;
 		case W_COND:
 			strcpy(w_data.w_cond, akt_tuple->value->cstring);
 			break;
 		case W_ICON:
 			w_data.w_icon = akt_tuple->value->int16;
+			bLoadIcon = true;
 			break;
 		case W_CITY:
 			strcpy(w_data.w_city, akt_tuple->value->cstring);
@@ -629,54 +744,127 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		case C_VIBR_BC:
 			settings.vibr_bc = intVal;
 			break;
+		default:
+			if (akt_tuple->key >= FC_DATE1 && akt_tuple->key <= FC_COND5)
+			{
+				bLoadFCIcons = true;
+				w_data.bWeatherFCUpdateRetry = false; //Update successful, usual update wait time
+				uint8_t nCurrArrPos = (akt_tuple->key - FC_DATE1) / (FC_COND1-FC_DATE1+1), 
+					nCurrValPos = (akt_tuple->key - FC_DATE1) % (FC_COND1-FC_DATE1+1);
+				
+				switch (nCurrValPos)
+				{
+				case 0: //FC_DATEx		{ .date = 0, . = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
+					fc_data[nCurrArrPos].date = intVal;
+					break;
+				case 1: //FC_TEMP_Hx
+					fc_data[nCurrArrPos].w_temp_h = akt_tuple->value->uint8;
+					break;
+				case 2: //FC_TEMP_Lx
+					fc_data[nCurrArrPos].w_temp_l = akt_tuple->value->uint8;
+					break;
+				case 3: //FC_ICONx
+					fc_data[nCurrArrPos].w_icon = akt_tuple->value->uint8;
+					break;
+				case 4: //FC_CONDx
+					strcpy(fc_data[nCurrArrPos].w_cond, akt_tuple->value->cstring);
+					break;
+				}
+			}
+			break;
 		}
 			
 		akt_tuple = dict_read_next(received);
 	}
 
 	//Load new weather icon
-	if (!s_bWeatherUpdateRetry && w_data.w_icon <= 12)
+	if (bLoadIcon && !w_data.bWeatherUpdateRetry)
 	{
-		snprintf(AdressBuffer, sizeof(AdressBuffer), "http://panicman.github.io/images/weather_big%d.png", w_data.w_icon);
-		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Requesting image: %s", AdressBuffer);
-		netdownload_request(AdressBuffer);
+		w_data.bPictureLoading = true;
+		load_picture(w_data.w_icon, true);
+	}
+	
+	//Load weather forecast icons
+	if (bLoadFCIcons && !w_data.bWeatherFCUpdateRetry)
+	{
+		w_data.nCurrFCIcon = 0;
+		text_layer_set_text(fc_location_layer, w_data.w_city);
+		if (!w_data.bPictureLoading)
+			load_picture(fc_data[w_data.nCurrFCIcon].w_icon, false);
 	}
 	
 	//Save Configuration
 	if (bSaveSettings) 
 	{
 		int result = persist_write_data(PK_SETTINGS, &settings, sizeof(settings) );
-		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Wrote %d bytes into settings", result);
+		if (settings.debug)
+			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Wrote %d bytes into settings", result);
 		
-		//Update Weather
 		if (settings.weather)
 		{
-			s_bWeatherUpdateRetry = true;
+			w_data.bWeatherUpdateRetry = true;
 			timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
 		}
-
-		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "ampm=%s, smart=%s, showmy=%s", settings.ampm ? "true" : "false", settings.smart ? "true" : "false", settings.showmy ? "true" : "false");
+		
+		bUpdateWeather = true;
 		update_configuration();
+	}
+	
+	//Update Weather
+	if (bUpdateWeather && settings.weather)
+	{
+		w_data.bWeatherUpdateRetry = true;
+		timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
+	}
+	if (bUpdateWeather && settings.weather_fc)
+	{
+		w_data.bWeatherFCUpdateRetry = true;
+		timer_weather_fc = app_timer_register(10000, timerCallbackWeatherForecast, NULL);
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void download_complete_handler(NetDownload *download) 
 {
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Loaded image with %u bytes, Heap free is %lu bytes", (unsigned int)download->length, (long unsigned int)heap_bytes_free());
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Loaded image with %u bytes, Heap free is %lu bytes", (unsigned int)download->length, (long unsigned int)heap_bytes_free());
 	
 	//Create Bitmap from png data
 	GBitmap *bmp = gbitmap_create_from_png_data(download->data, download->length);
 	
 	GRect rcBmp = gbitmap_get_bounds(bmp);
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Created Image with Dimensions: %dx%d", rcBmp.size.w, rcBmp.size.h);
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Created Image with Dimensions: %dx%d", rcBmp.size.w, rcBmp.size.h);
 
-	// Save pointer to currently shown bitmap (to free it)
-	if (w_data.w_bitmap) 
+	//Main Picture?
+	if (w_data.bPictureLoading) 
+	{
+		w_data.bPictureLoading = false;
+		
+		// free current bitmap
 		gbitmap_destroy(w_data.w_bitmap);
-	w_data.w_bitmap = bmp;
-	
-	//Update Weather layer
-	layer_mark_dirty(s_clock_layer);
+		w_data.w_bitmap = bmp;
+
+		//Update Weather layer
+		layer_mark_dirty(s_clock_layer);
+		
+		//if there is a queue for small images, load it
+		if (w_data.nCurrFCIcon != -1)
+			load_picture(fc_data[w_data.nCurrFCIcon].w_icon, false);
+	} 
+	else if (w_data.nCurrFCIcon != -1) 
+	{
+		// free current bitmap
+		gbitmap_destroy(fc_data[w_data.nCurrFCIcon].w_bitmap);
+		fc_data[w_data.nCurrFCIcon].w_bitmap = bmp;
+		layer_mark_dirty(fc_data[w_data.nCurrFCIcon].w_layer);
+		
+		//Load the next one
+		if (w_data.nCurrFCIcon++ < 4) 
+			load_picture(fc_data[w_data.nCurrFCIcon].w_icon, false);
+		else
+			w_data.nCurrFCIcon = -1;
+	} else //belongs to nothing
+		gbitmap_destroy(bmp);
 
 	// Free the memory now
 	free(download->data);
@@ -684,29 +872,38 @@ void download_complete_handler(NetDownload *download)
 	netdownload_destroy(download);
 }
 //-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackRequest(void *data) 
+{
+	netdownload_request(AdressBuffer);
+}
+//-----------------------------------------------------------------------------------------------------------------------
 void download_error_handler(DictionaryIterator *iter, AppMessageResult reason, void *context)
 {
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "custom error handler,  %s ", netdownload_translate_error(reason));
+	if (settings.debug)
+		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "custom error handler,  %s, retries left: %d", netdownload_translate_error(reason), nDLRetries);
 	
-	//Request again in 5sec
-	if (reason == APP_MSG_SEND_TIMEOUT)
-		timer_request = app_timer_register(5000, timerCallbackRequest, NULL);
+	//Request again in 3sec
+	if (reason == APP_MSG_SEND_TIMEOUT && nDLRetries > 0)
+	{
+		nDLRetries--;
+		timer_request = app_timer_register(3000, timerCallbackRequest, NULL);
+	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void main_window_load(Window *window) 
 {
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Initial Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
+	if (settings.debug)	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Initial Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_ClockBG = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_CLOCK_BG);
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Glock BG loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
+	if (settings.debug)	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Glock BG loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_Numbers = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_NUMBERS);
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Numbers loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
+	if (settings.debug)	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Numbers loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_StatusAll = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_SMART_STATUS);
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Smart status loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
+	if (settings.debug)	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Smart status loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 	s_BmpRadio = gbitmap_create_as_sub_bitmap(s_StatusAll, GRect(110, 0, 10, 16));
 	
 	s_TempFont = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_SUBSET_32));
 	s_CondFont = fonts_load_custom_font(resource_get_handle(RESOURCE_ID_FONT_ROBOTO_SUBSET_10));
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Fonts loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
+	if (settings.debug)	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Fonts loaded, Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
 
 	Layer *window_layer = window_get_root_layer(s_main_window);
 	GRect bounds = layer_get_frame(window_layer);
@@ -732,12 +929,19 @@ static void main_window_load(Window *window)
 	bitmap_layer_set_compositing_mode(battery_layer, GCompOpSet);
 	
 	//Init Forecast Layer
-	fc_location_layer = text_layer_create(GRect(0, 0, bounds.size.w, 18));
+	fc_location_layer = text_layer_create(GRect(0, -18, bounds.size.w, 18));
 	text_layer_set_text_alignment(fc_location_layer, GTextAlignmentCenter);
 	text_layer_set_font(fc_location_layer, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD));
 	text_layer_set_background_color(fc_location_layer, GColorBlack);
 	text_layer_set_text_color(fc_location_layer, GColorWhite);
-	//layer_add_child(window_layer, text_layer_get_layer(fc_location_layer));
+	text_layer_set_text(fc_location_layer, "Updating..."); //Initial allways updating
+	layer_add_child(window_layer, text_layer_get_layer(fc_location_layer));
+	
+	for (uint8_t i=0; i<5; i++) {
+		fc_data[i].w_layer = layer_create(GRect(bounds.size.w, 18+30*i, bounds.size.w, 30));
+		layer_set_update_proc(fc_data[i].w_layer, fcx_layer_update_callback);
+		layer_add_child(window_layer, fc_data[i].w_layer);
+	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void main_window_unload(Window *window) 
@@ -747,6 +951,11 @@ static void main_window_unload(Window *window)
 	bitmap_layer_destroy(battery_layer);
 	bitmap_layer_destroy(radio_layer);
 	text_layer_destroy(fc_location_layer);
+	
+	for (uint8_t i=0; i<5; i++) {
+		layer_destroy(fc_data[i].w_layer);
+		gbitmap_destroy(fc_data[i].w_bitmap);
+	}	
 	
 	gbitmap_destroy(s_ClockBG);
 	gbitmap_destroy(s_Numbers);
@@ -762,7 +971,6 @@ static void main_window_unload(Window *window)
 static void init() 
 {
 	//Initialize dynamic weather image load
-	s_bWeatherUpdateRetry = true;
 	netdownload_initialize(download_complete_handler, in_received_handler, download_error_handler);
 	
 	s_main_window = window_create();
@@ -786,6 +994,7 @@ static void init()
 static void deinit() 
 {
 	netdownload_deinitialize(); // call this to avoid 20B memory leak
+	app_timer_cancel(timer_weather_fc);
 	app_timer_cancel(timer_weather);
 	app_timer_cancel(timer_batt);
 	app_timer_cancel(timer_request);
