@@ -100,6 +100,7 @@ Weather_Data w_data = {
 	.bIsShowing = false,
 	.nCurrFCIcon = -1,
 	.bWeatherFCUpdateRetry = true
+	
 };
 
 typedef struct {
@@ -110,14 +111,15 @@ typedef struct {
 	char w_cond[32];
 	Layer *w_layer;
 	GBitmap *w_bitmap;
+	PropertyAnimation *s_pa_anim;
 } Forecast_Data;
 
 Forecast_Data fc_data[] = {
-	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
-	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
-	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
-	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL },
-	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL }
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL, .s_pa_anim = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL, .s_pa_anim = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL, .s_pa_anim = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL, .s_pa_anim = NULL },
+	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL, .s_pa_anim = NULL }
 };
 
 typedef struct {
@@ -150,7 +152,7 @@ Settings_Data settings = {
 	.weather_fc = true,
 	.units = false,		//°C = false, °F = °C × 1,8 + 32
 	.update = 60,		//minutes
-    .cityid = 2817220,	//Default: 0 (Berlin=2950159, VS=2817220)
+    .cityid = 0,	//Default: 0 (Berlin=2950159, VS=2817220)
 	.col_bg = "000000",
 	.col_calbg = "000055",
 	.col_calgr = "aaaaaa",
@@ -169,10 +171,11 @@ static Window *s_main_window;
 static Layer *s_clock_layer, *s_cal_layer;
 BitmapLayer *radio_layer, *battery_layer;
 TextLayer* fc_location_layer;
+static PropertyAnimation *s_pa_location;
 static GBitmap *s_ClockBG, *s_Numbers, *s_BmpBattAkt, *s_BmpRadio, *s_StatusAll;
 static GFont s_TempFont, s_CondFont;
 static uint8_t s_HH, s_MM, s_SS, aktBatt, aktBattAnim, nDLRetries;
-static AppTimer *timer_weather, *timer_weather_fc, *timer_batt, *timer_request;
+static AppTimer *timer_weather, *timer_weather_fc, *timer_batt, *timer_request, *timer_slide;
 static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png";
 static bool s_bCharging;
 
@@ -371,24 +374,28 @@ static void fcx_layer_update_callback(Layer *layer, GContext* ctx)
 	//Draw Icon
 	if (fc_data[nAkt].w_bitmap)
 		graphics_draw_bitmap_in_rect(ctx, fc_data[nAkt].w_bitmap, GRect(0, 0, 36, 30));
-	
-	//Draw Weekday
-	strftime(sTemp, sizeof(sTemp), "%A", tmAkt);
-	graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(36, 0, rcFrame.size.w-36-25, 20), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-	
-	//Draw condition
-	graphics_draw_text(ctx, fc_data[nAkt].w_cond, s_CondFont, GRect(36, 20-2-1, rcFrame.size.w-36-25, 10+2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-	
-	//Draw Temperatures
-	graphics_context_set_fill_color(ctx, GColorDarkCandyAppleRed);	
-	graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 1, 25, 14), 3, GCornersAll);	
-	snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_h * 1.8 + 32) : fc_data[nAkt].w_temp_h)); //°C or °F?
-	graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 1-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
-	graphics_context_set_fill_color(ctx, GColorOxfordBlue);	
-	graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 16, 25, 14), 3, GCornersAll);	
-	snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_l * 1.8 + 32) : fc_data[nAkt].w_temp_l)); //°C or °F?
-	graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 16-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+	//Darw Data only if there is something
+	if (fc_data[nAkt].date != 0)
+	{
+		//Draw Weekday
+		strftime(sTemp, sizeof(sTemp), "%A", tmAkt);
+		graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(36, 0, rcFrame.size.w-36-25, 20), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+		//Draw condition
+		graphics_draw_text(ctx, fc_data[nAkt].w_cond, s_CondFont, GRect(36, 20-2-1, rcFrame.size.w-36-25, 10+2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+
+		//Draw Temperatures
+		graphics_context_set_fill_color(ctx, GColorDarkCandyAppleRed);	
+		graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 1, 25, 14), 3, GCornersAll);	
+		snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_h * 1.8 + 32) : fc_data[nAkt].w_temp_h)); //°C or °F?
+		graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 1-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+
+		graphics_context_set_fill_color(ctx, GColorOxfordBlue);	
+		graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 16, 25, 14), 3, GCornersAll);	
+		snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_l * 1.8 + 32) : fc_data[nAkt].w_temp_l)); //°C or °F?
+		graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 16-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void generate_vibe(uint8_t vibe_pattern_number) 
@@ -890,6 +897,43 @@ void download_error_handler(DictionaryIterator *iter, AppMessageResult reason, v
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
+void slide_forecast_in_out()
+{
+	//Animate Location
+	GRect rc_from = layer_get_frame(text_layer_get_layer(fc_location_layer)), rc_to = rc_from;
+	rc_to.origin.y += rc_to.size.h * (rc_from.origin.y < 0 ? 1 : -1);
+
+	s_pa_location = property_animation_create_layer_frame(text_layer_get_layer(fc_location_layer), &rc_from, &rc_to);
+	animation_set_curve((Animation*)s_pa_location, rc_from.origin.y < 0 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
+	animation_set_delay((Animation*)s_pa_location, 500);
+	animation_set_duration((Animation*)s_pa_location, 1000);
+	animation_schedule((Animation*)s_pa_location);
+	
+	//Now the five day layers
+	for (uint8_t i=0; i<5; i++)
+	{
+		rc_from = layer_get_frame(fc_data[i].w_layer); rc_to = rc_from;
+		rc_to.origin.x += rc_to.size.w * (rc_from.origin.x > 143 ? -1 : 1);
+
+		fc_data[i].s_pa_anim = property_animation_create_layer_frame(fc_data[i].w_layer, &rc_from, &rc_to);
+		animation_set_curve((Animation*)fc_data[i].s_pa_anim, rc_from.origin.x > 143 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
+		animation_set_delay((Animation*)fc_data[i].s_pa_anim, 1000+500*i);
+		animation_set_duration((Animation*)fc_data[i].s_pa_anim, 1000);
+		animation_schedule((Animation*)fc_data[i].s_pa_anim);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackSlide(void *data) 
+{
+	slide_forecast_in_out();
+	timer_slide = app_timer_register(15000, timerCallbackSlide, NULL);
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void tap_handler(AccelAxisType axis, int32_t direction) 
+{
+	slide_forecast_in_out();
+}
+//-----------------------------------------------------------------------------------------------------------------------
 static void main_window_load(Window *window) 
 {
 	if (settings.debug)	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Initial Heap: used: %lu, free: %lu bytes", (long unsigned int)heap_bytes_used(), (long unsigned int)heap_bytes_free());
@@ -987,18 +1031,32 @@ static void init()
 	battery_state_service_subscribe(&battery_state_service_handler);
 	bluetooth_connection_service_subscribe(&bluetooth_connection_handler);
 	
+	//Subscribe taps
+	accel_tap_service_subscribe(tap_handler);
+	
 	//Initialize configuration
 	update_configuration();
+	
+	if (settings.debug)
+		timer_slide = app_timer_register(5000, timerCallbackSlide, NULL);
+	
+	if (settings.debug)
+		light_enable(true);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void deinit() 
 {
 	netdownload_deinitialize(); // call this to avoid 20B memory leak
+	animation_unschedule_all();
 	app_timer_cancel(timer_weather_fc);
 	app_timer_cancel(timer_weather);
 	app_timer_cancel(timer_batt);
 	app_timer_cancel(timer_request);
+	app_timer_cancel(timer_slide);
 	tick_timer_service_unsubscribe();
+	accel_tap_service_unsubscribe();
+	battery_state_service_unsubscribe();
+	bluetooth_connection_service_unsubscribe();
 	window_destroy(s_main_window);
 }
 //-----------------------------------------------------------------------------------------------------------------------
