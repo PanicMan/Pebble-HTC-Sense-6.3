@@ -42,6 +42,7 @@ enum DataKeys {
 	C_VIBR_HR=34,
 	C_VIBR_BL=35,
 	C_VIBR_BC=36,
+	C_WEATHER_ASO=37,
 	FC_CKEY=99,
 	FC_DATE1=100,
 	FC_TEMP_H1=101,
@@ -71,36 +72,38 @@ enum DataKeys {
 };	
 
 enum StorrageKeys {
-	PK_SETTINGS = 0
+	PK_SETTINGS = 0,
+	PK_WEATHER = 1
 };
 
 typedef struct {
+	uint32_t w_time;
 	int16_t w_temp;
 	uint8_t w_icon;
 	char w_cond[32];
 	char w_city[32];
+} __attribute__((__packed__)) Weather_Data_P;
+
+typedef struct {
+	Weather_Data_P p;
 	GBitmap *w_bitmap;
 	bool bPictureLoading;
 	bool bWeatherUpdateRetry;
 	//For forecast
-	bool bIsShowing;
+	bool bFCIsShowing;
 	int8_t nCurrFCIcon;
 	bool bWeatherFCUpdateRetry;
 } Weather_Data;
 
 Weather_Data w_data = {
-	.w_temp = 127,		//no temp received jet
-	.w_icon = 0,
-	.w_cond = "\0",
-	.w_city = "\0",
+	.p = {.w_time = 0, .w_temp = 0, .w_icon = 0, .w_cond = "\0", .w_city = "\0"},
 	.w_bitmap = NULL,
 	.bPictureLoading = false,
 	.bWeatherUpdateRetry = true,
 	//For forecast
-	.bIsShowing = false,
+	.bFCIsShowing = false,
 	.nCurrFCIcon = -1,
 	.bWeatherFCUpdateRetry = true
-	
 };
 
 typedef struct {
@@ -129,7 +132,7 @@ typedef struct {
 	bool firstwd, grid, invert, showmy;
 	uint8_t preweeks;
 	//Weather
-	bool weather, weather_fc, units;
+	bool weather, units, weather_fc, weather_aso;
 	uint8_t update;
 	uint32_t cityid;
 	//Colors
@@ -142,15 +145,16 @@ typedef struct {
 Settings_Data settings = {
 	.ampm = false,
 	.smart = true,
-	.debug = false,
+	.debug = true,
 	.firstwd = false,	//So=true, Mo=false
 	.grid = true,
 	.invert = true,
 	.showmy = true,
 	.preweeks = 1,
 	.weather = true,
-	.weather_fc = true,
 	.units = false,		//°C = false, °F = °C × 1,8 + 32
+	.weather_fc = true,
+	.weather_aso = true,
 	.update = 60,		//minutes
     .cityid = 0,	//Default: 0 (Berlin=2950159, VS=2817220)
 	.col_bg = "000000",
@@ -218,14 +222,14 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 	}
 	
 	//Weather, only if a valid temperature exist
-	if (w_data.w_temp < 127 && settings.weather)
+	if (w_data.p.w_time > 0 && settings.weather)
 	{
 		graphics_context_set_text_color(ctx, GColorWhite);
-		graphics_draw_text(ctx, w_data.w_city, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(4, 60, 96, 14 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-		graphics_draw_text(ctx, w_data.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+		graphics_draw_text(ctx, w_data.p.w_city, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(4, 60, 96, 14 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+		graphics_draw_text(ctx, w_data.p.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
 		char sTemp[] = "-00.0°";
-		snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)w_data.w_temp * 1.8 + 32) : w_data.w_temp)); //°C or °F?
+		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)w_data.p.w_temp * (settings.units ? 1.8 + 32 : 1))); //°C or °F?
 		GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
 		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-5, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
 
@@ -470,7 +474,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed)
 //-----------------------------------------------------------------------------------------------------------------------
 static bool update_weather() 
 {
-	strcpy(w_data.w_cond, "Updating...");
+	strcpy(w_data.p.w_cond, "Updating...");
 	layer_mark_dirty(s_clock_layer);
 
 	DictionaryIterator *iter;
@@ -603,6 +607,9 @@ static void update_configuration(void)
 	if (persist_exists(PK_SETTINGS))
 		persist_read_data(PK_SETTINGS, &settings, sizeof(settings));
 
+	if (persist_exists(PK_WEATHER))
+		persist_read_data(PK_WEATHER, &w_data.p, sizeof(w_data.p));
+
 	Layer *window_layer = window_get_root_layer(s_main_window);
 	window_set_background_color(s_main_window, GColorFromHEX(HexToInt(settings.col_bg)));
 	
@@ -630,7 +637,6 @@ static void update_configuration(void)
 	//Set Bluetooth state
 	bool connected = bluetooth_connection_service_peek();
 	bluetooth_connection_handler(connected);
-	
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void load_picture(uint8_t nNr, bool bBig)
@@ -651,6 +657,7 @@ void in_received_handler(DictionaryIterator *received, void *context)
 	if (settings.debug)
 		app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Received data:");
 	bool bSaveSettings = false, bUpdateWeather = false, bLoadIcon = false, bLoadFCIcons = false;
+	time_t tmAkt = time(NULL);
 	
 	Tuple *akt_tuple = dict_read_first(received);
     while (akt_tuple)
@@ -665,18 +672,19 @@ void in_received_handler(DictionaryIterator *received, void *context)
 			bUpdateWeather = true;
 			break;
 		case W_TEMP:
-			w_data.w_temp = akt_tuple->value->int16;
+			w_data.p.w_time = tmAkt;
+			w_data.p.w_temp = akt_tuple->value->int16;
 			w_data.bWeatherUpdateRetry = false; //Update successful, usual update wait time
 			break;
 		case W_COND:
-			strcpy(w_data.w_cond, akt_tuple->value->cstring);
+			strcpy(w_data.p.w_cond, akt_tuple->value->cstring);
 			break;
 		case W_ICON:
-			w_data.w_icon = akt_tuple->value->int16;
+			w_data.p.w_icon = akt_tuple->value->int16;
 			bLoadIcon = true;
 			break;
 		case W_CITY:
-			strcpy(w_data.w_city, akt_tuple->value->cstring);
+			strcpy(w_data.p.w_city, akt_tuple->value->cstring);
 			break;
 		case C_AMPM:
 			settings.ampm = (strcmp(akt_tuple->value->cstring, "12h") == 0);
@@ -703,11 +711,14 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		case C_WEATHER:
 			settings.weather = (intVal == 1);
 			break;
+		case C_UNITS:
+			settings.units = (strcmp(akt_tuple->value->cstring, "f") == 0);
+			break;
 		case C_WEATHER_FC:
 			settings.weather_fc = (intVal == 1);
 			break;
-		case C_UNITS:
-			settings.units = (strcmp(akt_tuple->value->cstring, "f") == 0);
+		case C_WEATHER_ASO:
+			settings.weather_aso = (intVal == 1);
 			break;
 		case C_UPDATE:
 			settings.update = intVal;
@@ -783,22 +794,6 @@ void in_received_handler(DictionaryIterator *received, void *context)
 			
 		akt_tuple = dict_read_next(received);
 	}
-
-	//Load new weather icon
-	if (bLoadIcon && !w_data.bWeatherUpdateRetry)
-	{
-		w_data.bPictureLoading = true;
-		load_picture(w_data.w_icon, true);
-	}
-	
-	//Load weather forecast icons
-	if (bLoadFCIcons && !w_data.bWeatherFCUpdateRetry)
-	{
-		w_data.nCurrFCIcon = 0;
-		text_layer_set_text(fc_location_layer, w_data.w_city);
-		if (!w_data.bPictureLoading)
-			load_picture(fc_data[w_data.nCurrFCIcon].w_icon, false);
-	}
 	
 	//Save Configuration
 	if (bSaveSettings) 
@@ -807,12 +802,9 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		if (settings.debug)
 			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Wrote %d bytes into settings", result);
 		
-		if (settings.weather)
-		{
-			w_data.bWeatherUpdateRetry = true;
-			timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
-		}
-		
+		//Force weather to update
+		w_data.p.w_time = 0;
+		persist_delete(PK_WEATHER);
 		bUpdateWeather = true;
 		update_configuration();
 	}
@@ -821,13 +813,45 @@ void in_received_handler(DictionaryIterator *received, void *context)
 	if (bUpdateWeather && settings.weather)
 	{
 		w_data.bWeatherUpdateRetry = true;
-		timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
+		if (settings.debug)
+			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Saved Time: %d, diff from now: %d sec", (int)w_data.p.w_time, (int)(tmAkt - w_data.p.w_time));
+		
+		if (w_data.p.w_time == 0 || (tmAkt - w_data.p.w_time) > 60*settings.update)
+			timer_weather = app_timer_register(100, timerCallbackWeather, NULL);
+		else
+		{
+			bLoadIcon = true;
+			timer_weather = app_timer_register((tmAkt - w_data.p.w_time)*1000, timerCallbackWeather, NULL);
+		}
 	}
+	
 	if (bUpdateWeather && settings.weather_fc)
 	{
 		w_data.bWeatherFCUpdateRetry = true;
 		timer_weather_fc = app_timer_register(10000, timerCallbackWeatherForecast, NULL);
 	}
+
+	//Load new weather icon
+	if (bLoadIcon)
+	{
+		//Got weather data, save them
+		int result = persist_write_data(PK_WEATHER, &w_data.p, sizeof(w_data.p) );
+		if (settings.debug)
+			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Wrote %d bytes into weather data", result);
+		
+		w_data.bPictureLoading = true;
+		load_picture(w_data.p.w_icon, true);
+	}
+	
+	//Load weather forecast icons
+	if (bLoadFCIcons)
+	{
+		w_data.nCurrFCIcon = 0;
+		text_layer_set_text(fc_location_layer, w_data.p.w_city);
+		if (!w_data.bPictureLoading)
+			load_picture(fc_data[w_data.nCurrFCIcon].w_icon, false);
+	}
+	
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void download_complete_handler(NetDownload *download) 
@@ -903,6 +927,8 @@ void slide_forecast_in_out()
 	GRect rc_from = layer_get_frame(text_layer_get_layer(fc_location_layer)), rc_to = rc_from;
 	rc_to.origin.y += rc_to.size.h * (rc_from.origin.y < 0 ? 1 : -1);
 
+	w_data.bFCIsShowing = (rc_from.origin.y < 0);
+	
 	s_pa_location = property_animation_create_layer_frame(text_layer_get_layer(fc_location_layer), &rc_from, &rc_to);
 	animation_set_curve((Animation*)s_pa_location, rc_from.origin.y < 0 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
 	animation_set_delay((Animation*)s_pa_location, 500);
@@ -926,12 +952,13 @@ void slide_forecast_in_out()
 static void timerCallbackSlide(void *data) 
 {
 	slide_forecast_in_out();
-	timer_slide = app_timer_register(15000, timerCallbackSlide, NULL);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void tap_handler(AccelAxisType axis, int32_t direction) 
 {
 	slide_forecast_in_out();
+	if (w_data.bFCIsShowing && settings.weather_aso)
+		timer_slide = app_timer_register(30000, timerCallbackSlide, NULL);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void main_window_load(Window *window) 
@@ -1038,7 +1065,7 @@ static void init()
 	update_configuration();
 	
 	if (settings.debug)
-		timer_slide = app_timer_register(5000, timerCallbackSlide, NULL);
+		tap_handler(ACCEL_AXIS_X, 0);
 	
 	if (settings.debug)
 		light_enable(true);
