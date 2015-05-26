@@ -264,7 +264,7 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 		graphics_draw_text(ctx, w_data.p.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
 		char sTemp[] = "-00.0°";
-		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)w_data.p.w_temp * (settings.units ? 1.8 + 32 : 1))); //°C or °F?
+		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)w_data.p.w_temp * (settings.units ? 1.8 : 1) + (settings.units ? 32 : 0))); //°C or °F?
 		GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
 		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-5, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
 
@@ -412,12 +412,12 @@ static void fcx_layer_update_callback(Layer *layer, GContext* ctx)
 		//Draw Temperatures
 		graphics_context_set_fill_color(ctx, GColorDarkCandyAppleRed);	
 		graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 1, 25, 14), 3, GCornersAll);	
-		snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_h * 1.8 + 32) : fc_data[nAkt].w_temp_h)); //°C or °F?
+		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)fc_data[nAkt].w_temp_h * (settings.units ? 1.8 : 1) + (settings.units ? 32 : 0))); //°C or °F?
 		graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 1-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 
 		graphics_context_set_fill_color(ctx, GColorOxfordBlue);	
 		graphics_fill_rect(ctx, GRect(rcFrame.size.w-25-1, 16, 25, 14), 3, GCornersAll);	
-		snprintf(sTemp, sizeof(sTemp), "%d°", (settings.units ? (int16_t)((double)fc_data[nAkt].w_temp_l * 1.8 + 32) : fc_data[nAkt].w_temp_l)); //°C or °F?
+		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)fc_data[nAkt].w_temp_l * (settings.units ? 1.8 : 1) + (settings.units ? 32 : 0))); //°C or °F?
 		graphics_draw_text(ctx, sTemp, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcFrame.size.w-25-1, 16-2, 25, 14), GTextOverflowModeFill, GTextAlignmentCenter, NULL);
 	}
 }
