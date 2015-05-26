@@ -327,7 +327,7 @@ Pebble.addEventListener('showConfiguration',
 		console.log("stored options: " + JSON.stringify(options));
 		console.log("showing configuration");
 
-		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.1';
+		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.3';
 		if (options !== null) {
 			uri += 
 				'&ampm=' + encodeURIComponent(options.ampm) + 
@@ -354,7 +354,8 @@ Pebble.addEventListener('showConfiguration',
 				'&quiett=' + encodeURIComponent(options.quiett) + 
 				'&vibr_hr=' + encodeURIComponent(options.vibr_hr) + 
 				'&vibr_bl=' + encodeURIComponent(options.vibr_bl) + 
-				'&vibr_bc=' + encodeURIComponent(options.vibr_bc);
+				'&vibr_bc=' + encodeURIComponent(options.vibr_bc) + 
+				'&debug=' + encodeURIComponent(options.debug);
 		}
 		console.log("Uri: " + uri);
 		Pebble.openURL(uri);

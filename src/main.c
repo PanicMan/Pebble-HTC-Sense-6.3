@@ -43,6 +43,7 @@ enum DataKeys {
 	C_VIBR_BL=35,
 	C_VIBR_BC=36,
 	C_WEATHER_ASO=37,
+	C_DEBUG=38,
 	FC_CKEY=99,
 	FC_DATE1=100,
 	FC_TEMP_H1=101,
@@ -145,7 +146,7 @@ typedef struct {
 Settings_Data settings = {
 	.ampm = false,
 	.smart = true,
-	.debug = true,
+	.debug = false,
 	.firstwd = false,	//So=true, Mo=false
 	.grid = true,
 	.invert = true,
@@ -201,23 +202,57 @@ uint32_t HexToInt(char* hexstring)
 //-----------------------------------------------------------------------------------------------------------------------
 static void clock_layer_update_callback(Layer *layer, GContext* ctx) 
 {
+	//GRect rcFrame = layer_get_frame(layer);
 	graphics_context_set_compositing_mode(ctx, GCompOpSet);
 
 	//Background
 	GSize bg_size = gbitmap_get_bounds(s_ClockBG).size;
 	graphics_draw_bitmap_in_rect(ctx, s_ClockBG, GRect(0, 0, bg_size.w, bg_size.h));
+/*	
+	//Upper back
+	graphics_context_set_stroke_color(ctx, GColorWhite);
+	graphics_context_set_fill_color(ctx, GColorLightGray);
+	graphics_fill_rect(ctx, GRect(-1, 5, rcFrame.size.w+2, 60), 10, GCornersTop);
+	graphics_draw_round_rect(ctx, GRect(-1, 5, rcFrame.size.w+2, 60), 10);
 
+	//Bottom back
+	graphics_context_set_fill_color(ctx, GColorDarkGray);
+	graphics_fill_rect(ctx, GRect(0, 20, rcFrame.size.w, 45), 6, GCornersTop);
+
+	//Black Bottom
+	graphics_context_set_stroke_color(ctx, GColorDarkGray);
+	graphics_context_set_fill_color(ctx, GColorBlack);
+	graphics_fill_rect(ctx, GRect(0, 58, rcFrame.size.w, rcFrame.size.h-58), 6, GCornersAll);
+	graphics_draw_round_rect(ctx, GRect(0, 58, rcFrame.size.w, rcFrame.size.h-58), 6);
+
+	//Hour Back
+	graphics_context_set_stroke_color(ctx, GColorLightGray);
+	graphics_context_set_fill_color(ctx, GColorWhite);
+	graphics_fill_rect(ctx, GRect(6, 0, 64, 58), 5, GCornersAll);
+	graphics_draw_round_rect(ctx, GRect(6, 0, 64, 58), 5);
+	graphics_fill_rect(ctx, GRect(rcFrame.size.w-64-6, 0, 64, 58), 5, GCornersAll);
+	graphics_draw_round_rect(ctx, GRect(rcFrame.size.w-64-6, 0, 64, 58), 5);
+	
+	//Hour Bottom shadow
+	graphics_context_set_fill_color(ctx, GColorLightGray);
+	graphics_fill_rect(ctx, GRect(7, 58-16, 62, 16), 5, GCornersBottom);
+	graphics_fill_rect(ctx, GRect(rcFrame.size.w-62-7, 58-16, 62, 16), 5, GCornersBottom);
+	
+	//Hour middle shadow	
+	graphics_fill_rect(ctx, GRect(7, 29-16, 62, 16), 5, GCornerNone);
+	graphics_fill_rect(ctx, GRect(rcFrame.size.w-62-7, 29-16, 62, 16), 5, GCornerNone);
+*/	
 	//Hour+Minutes
-	uint8_t nNr, x, y=5;
+	uint8_t nNr, x, y=5, w=32, h=47;
 	for (int i=0; i<4; i++)
 	{
-		if (i == 0) { x=4; nNr = (s_HH % (settings.ampm ? 12 : 24)) / 10; }		//Hour tens
-		else if (i == 1) { x=35; nNr = (s_HH % (settings.ampm ? 12 : 24)) % 10; }	//Hour ones
-		else if (i == 2) { x=73; nNr = s_MM / 10; }	//Minute tens
-		else if (i == 3) { x=104; nNr = s_MM % 10; }//Minute ones
+		if (i == 0) { x=7; nNr = (s_HH > 12 && settings.ampm ? s_HH - 12 : s_HH) / 10; }		//Hour tens
+		else if (i == 1) { x=37; nNr = (s_HH > 12 && settings.ampm ? s_HH - 12 : s_HH) % 10; }	//Hour ones
+		else if (i == 2) { x=75; nNr = s_MM / 10; }	//Minute tens
+		else if (i == 3) { x=105; nNr = s_MM % 10; }//Minute ones
 		
-		GBitmap *bmpNumber = gbitmap_create_as_sub_bitmap(s_Numbers, GRect(36*nNr, 0, 36, 50));
-		graphics_draw_bitmap_in_rect(ctx, bmpNumber, GRect(x, y, 36, 50));
+		GBitmap *bmpNumber = gbitmap_create_as_sub_bitmap(s_Numbers, GRect(w*nNr, 0, w, h));
+		graphics_draw_bitmap_in_rect(ctx, bmpNumber, GRect(x, y, w, h));
 		gbitmap_destroy(bmpNumber);
 	}
 	
@@ -270,36 +305,10 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 	
 	//All Week days
 	for (uint8_t col=0; col<cal_days; col++)
-	{
-		//Dynamic Weekday generation
-		char sWDay[] = "Mo";
-		time_t tmpTime = (3 + col + (settings.firstwd ? 0 : 1))*86400; //01.01.1970 was a Thursday
-		struct tm *tmTmp = localtime(&tmpTime);
-		strftime (sWDay, 3, "%a", tmTmp);
-		
-		//Today Weekday in Bold
-		if (tmTmp->tm_wday == wdAkt) 
-		{
-			current = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
-			graphics_context_set_text_color(ctx, col_calhl);
-		}
-		
-		graphics_draw_text(ctx, sWDay, current, GRect(cal_width * col + cal_border, cal_vgap + text_shift, cal_width, cal_height), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
-
-		//Vertical line not on the last one
-		if (col != cal_days-1 && settings.grid)
-			graphics_draw_line(ctx, GPoint(cal_width * (col+1) + cal_border, cal_height + cal_vgap), GPoint(cal_width * (col+1) + cal_border, (cal_weeks+1) * cal_height + cal_vgap));
-		
-		//Reset Font
-		if (tmTmp->tm_wday == wdAkt) 
-		{
-			current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
-			graphics_context_set_text_color(ctx, col_caltx);
-		}
-
 		for (uint8_t row=0; row<cal_weeks; row++)
 		{
 			//Current Day
+			char sWDay[] = "00";
 			time_t timeCurr = timeFirst + (row*7 + col) * 86400;
 			struct tm *tmCurr = localtime(&timeCurr);
 			strftime (sWDay, 3, "%d", tmCurr);
@@ -317,14 +326,26 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 					graphics_fill_rect(ctx, GRect(rc.origin.x+1, rc.origin.y, rc.size.w-1, rc.size.h), 0, GCornerNone);
 				}
 			}
-			
+
 			graphics_draw_text(ctx, sWDay, current, GRect(rc.origin.x, rc.origin.y + text_shift, rc.size.w, rc.size.h), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 			
-			if (timeCurr == timeAkt)
+			//Weekdays and vertical lines only at first row
+			if (row == settings.preweeks) 
 			{
-				current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
-				graphics_context_set_text_color(ctx, col_caltx);
+				strftime (sWDay, 3, "%a", tmCurr);
+				
+				if (timeCurr == timeAkt && settings.invert)
+					graphics_context_set_text_color(ctx, col_caltx);
+				
+				graphics_draw_text(ctx, sWDay, current, GRect(cal_width * col + cal_border, cal_vgap + text_shift, cal_width, cal_height), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+
+				//Vertical line not on the last one
+				if (col != cal_days-1 && settings.grid)
+					graphics_draw_line(ctx, GPoint(cal_width * (col+1) + cal_border, cal_height + cal_vgap), GPoint(cal_width * (col+1) + cal_border, (cal_weeks+1) * cal_height + cal_vgap));
 			}
+			
+			if (timeCurr == timeAkt)
+				current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 			
 			//Horizontal line
 			if (settings.grid)
@@ -334,7 +355,6 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 			if (row == cal_weeks-1 && (settings.smart || settings.showmy) && settings.grid) 
 				graphics_draw_line(ctx, GPoint(cal_border, cal_vgap + cal_height * (row+2)), GPoint(rcFrame.size.w - cal_border - 1, cal_height * (row+2) + cal_vgap));
 		}
-	}
 	
 	//Rect for the Bottom space
 	GRect rcBot = GRect(10, cal_vgap + cal_height * 4 + 1, rcFrame.size.w-10, rcFrame.size.h - (cal_vgap + cal_height * 4 + 1));
@@ -462,6 +482,7 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed)
 	s_HH = tick_time->tm_hour;
 	s_MM = tick_time->tm_min;
 	s_SS = tick_time->tm_sec;
+	//s_HH = s_MM = 0;
 	
 	layer_mark_dirty(s_clock_layer);
 	
@@ -602,6 +623,46 @@ void bluetooth_connection_handler(bool connected)
 	generate_vibe(connected ? settings.vibr_bc : settings.vibr_bl);
 }
 //-----------------------------------------------------------------------------------------------------------------------
+void slide_forecast_in_out()
+{
+	//Animate Location
+	GRect rc_from = layer_get_frame(text_layer_get_layer(fc_location_layer)), rc_to = rc_from;
+	rc_to.origin.y += rc_to.size.h * (rc_from.origin.y < 0 ? 1 : -1);
+
+	w_data.bFCIsShowing = (rc_from.origin.y < 0);
+	
+	s_pa_location = property_animation_create_layer_frame(text_layer_get_layer(fc_location_layer), &rc_from, &rc_to);
+	animation_set_curve((Animation*)s_pa_location, rc_from.origin.y < 0 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
+	animation_set_delay((Animation*)s_pa_location, 500);
+	animation_set_duration((Animation*)s_pa_location, 1000);
+	animation_schedule((Animation*)s_pa_location);
+	
+	//Now the five day layers
+	for (uint8_t i=0; i<5; i++)
+	{
+		rc_from = layer_get_frame(fc_data[i].w_layer); rc_to = rc_from;
+		rc_to.origin.x += rc_to.size.w * (rc_from.origin.x > 143 ? -1 : 1);
+
+		fc_data[i].s_pa_anim = property_animation_create_layer_frame(fc_data[i].w_layer, &rc_from, &rc_to);
+		animation_set_curve((Animation*)fc_data[i].s_pa_anim, rc_from.origin.x > 143 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
+		animation_set_delay((Animation*)fc_data[i].s_pa_anim, 1000+500*i);
+		animation_set_duration((Animation*)fc_data[i].s_pa_anim, 1000);
+		animation_schedule((Animation*)fc_data[i].s_pa_anim);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackSlide(void *data) 
+{
+	slide_forecast_in_out();
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void tap_handler(AccelAxisType axis, int32_t direction) 
+{
+	slide_forecast_in_out();
+	if (w_data.bFCIsShowing && settings.weather_aso)
+		timer_slide = app_timer_register(30000, timerCallbackSlide, NULL);
+}
+//-----------------------------------------------------------------------------------------------------------------------
 static void update_configuration(void)
 {
 	if (persist_exists(PK_SETTINGS))
@@ -637,6 +698,12 @@ static void update_configuration(void)
 	//Set Bluetooth state
 	bool connected = bluetooth_connection_service_peek();
 	bluetooth_connection_handler(connected);
+	
+	if (settings.debug)
+		tap_handler(ACCEL_AXIS_X, 0);
+	
+	if (settings.debug)
+		light_enable(true);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void load_picture(uint8_t nNr, bool bBig)
@@ -762,6 +829,9 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		case C_VIBR_BC:
 			settings.vibr_bc = intVal;
 			break;
+		case C_DEBUG:
+			settings.debug = (intVal == 1);
+			break;
 		default:
 			if (akt_tuple->key >= FC_DATE1 && akt_tuple->key <= FC_COND5)
 			{
@@ -821,7 +891,7 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		else
 		{
 			bLoadIcon = true;
-			timer_weather = app_timer_register((tmAkt - w_data.p.w_time)*1000, timerCallbackWeather, NULL);
+			timer_weather = app_timer_register((60*settings.update-(tmAkt-w_data.p.w_time))*1000, timerCallbackWeather, NULL);
 		}
 	}
 	
@@ -919,46 +989,6 @@ void download_error_handler(DictionaryIterator *iter, AppMessageResult reason, v
 		nDLRetries--;
 		timer_request = app_timer_register(3000, timerCallbackRequest, NULL);
 	}
-}
-//-----------------------------------------------------------------------------------------------------------------------
-void slide_forecast_in_out()
-{
-	//Animate Location
-	GRect rc_from = layer_get_frame(text_layer_get_layer(fc_location_layer)), rc_to = rc_from;
-	rc_to.origin.y += rc_to.size.h * (rc_from.origin.y < 0 ? 1 : -1);
-
-	w_data.bFCIsShowing = (rc_from.origin.y < 0);
-	
-	s_pa_location = property_animation_create_layer_frame(text_layer_get_layer(fc_location_layer), &rc_from, &rc_to);
-	animation_set_curve((Animation*)s_pa_location, rc_from.origin.y < 0 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
-	animation_set_delay((Animation*)s_pa_location, 500);
-	animation_set_duration((Animation*)s_pa_location, 1000);
-	animation_schedule((Animation*)s_pa_location);
-	
-	//Now the five day layers
-	for (uint8_t i=0; i<5; i++)
-	{
-		rc_from = layer_get_frame(fc_data[i].w_layer); rc_to = rc_from;
-		rc_to.origin.x += rc_to.size.w * (rc_from.origin.x > 143 ? -1 : 1);
-
-		fc_data[i].s_pa_anim = property_animation_create_layer_frame(fc_data[i].w_layer, &rc_from, &rc_to);
-		animation_set_curve((Animation*)fc_data[i].s_pa_anim, rc_from.origin.x > 143 ? AnimationCurveEaseOut : AnimationCurveEaseIn);
-		animation_set_delay((Animation*)fc_data[i].s_pa_anim, 1000+500*i);
-		animation_set_duration((Animation*)fc_data[i].s_pa_anim, 1000);
-		animation_schedule((Animation*)fc_data[i].s_pa_anim);
-	}
-}
-//-----------------------------------------------------------------------------------------------------------------------
-static void timerCallbackSlide(void *data) 
-{
-	slide_forecast_in_out();
-}
-//-----------------------------------------------------------------------------------------------------------------------
-static void tap_handler(AccelAxisType axis, int32_t direction) 
-{
-	slide_forecast_in_out();
-	if (w_data.bFCIsShowing && settings.weather_aso)
-		timer_slide = app_timer_register(30000, timerCallbackSlide, NULL);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void main_window_load(Window *window) 
@@ -1063,12 +1093,6 @@ static void init()
 	
 	//Initialize configuration
 	update_configuration();
-	
-	if (settings.debug)
-		tap_handler(ACCEL_AXIS_X, 0);
-	
-	if (settings.debug)
-		light_enable(true);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void deinit() 

@@ -45,6 +45,7 @@
         "col_calhl": 29,
         "col_calmy": 30,
         "col_caltx": 28,
+        "debug": 38,
         "firstwd": 15,
         "grid": 16,
         "invert": 17,
@@ -108,7 +109,7 @@
         "basalt"
     ],
     "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
-    "versionLabel": "1.1",
+    "versionLabel": "1.3",
     "watchapp": {
         "watchface": true
     }
