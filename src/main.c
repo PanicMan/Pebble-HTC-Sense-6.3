@@ -1,7 +1,7 @@
 #include <pebble.h>
 #include <time.h>
 	
-//#include "gbitmap_tools.h"
+#include "gbitmap_tools.h"
 #include "netdownload.h"
 
 enum DataKeys {
@@ -174,7 +174,7 @@ Settings_Data settings = {
 
 static Window *s_main_window;
 static Layer *s_clock_layer, *s_cal_layer;
-BitmapLayer *radio_layer, *battery_layer;
+BitmapLayer *radio_layer, *battery_layer, *weather_layer;
 TextLayer* fc_location_layer;
 static PropertyAnimation *s_pa_location;
 static GBitmap *s_ClockBG, *s_Numbers, *s_BmpBattAkt, *s_BmpRadio, *s_StatusAll;
@@ -267,9 +267,6 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)w_data.p.w_temp * (settings.units ? 1.8 : 1) + (settings.units ? 32 : 0))); //°C or °F?
 		GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
 		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-5, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
-
-		if (w_data.w_bitmap)
-			graphics_draw_bitmap_in_rect(ctx, w_data.w_bitmap, GRect(bg_size.w/2-60/2, bg_size.h-50-5, 60, 50));
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -520,7 +517,7 @@ static bool update_weather()
 //-----------------------------------------------------------------------------------------------------------------------
 static void timerCallbackWeather(void *data) 
 {
-	if (w_data.bWeatherUpdateRetry)
+	if (w_data.bWeatherUpdateRetry && !layer_get_hidden(bitmap_layer_get_layer(radio_layer)))
 	{
 		update_weather();
 		timer_weather = app_timer_register(30000, timerCallbackWeather, NULL); //Try again in 30 sec
@@ -559,7 +556,7 @@ static bool update_weather_forecast()
 //-----------------------------------------------------------------------------------------------------------------------
 static void timerCallbackWeatherForecast(void *data) 
 {
-	if (w_data.bWeatherFCUpdateRetry)
+	if (w_data.bWeatherFCUpdateRetry && !layer_get_hidden(bitmap_layer_get_layer(radio_layer)))
 	{
 		update_weather_forecast();
 		timer_weather_fc = app_timer_register(30000, timerCallbackWeatherForecast, NULL); //Try again in 30 sec
@@ -658,6 +655,9 @@ static void timerCallbackSlide(void *data)
 //-----------------------------------------------------------------------------------------------------------------------
 static void tap_handler(AccelAxisType axis, int32_t direction) 
 {
+	if (!settings.weather_fc)
+		return;
+	
 	slide_forecast_in_out();
 	if (w_data.bFCIsShowing && settings.weather_aso)
 		timer_slide = app_timer_register(30000, timerCallbackSlide, NULL);
@@ -685,6 +685,10 @@ static void update_configuration(void)
 		layer_remove_from_parent(fc_data[4].w_layer);
 		layer_add_child(window_layer, fc_data[4].w_layer);
 	}
+	
+	layer_remove_from_parent(bitmap_layer_get_layer(weather_layer));
+	if (settings.weather)
+		layer_add_child(window_layer, bitmap_layer_get_layer(weather_layer));	
 	
 	//Get a time structure so that it doesn't start blank
 	time_t temp = time(NULL);
@@ -909,6 +913,7 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		if (settings.debug)
 			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Wrote %d bytes into weather data", result);
 		
+		bitmap_layer_set_bitmap(weather_layer, NULL);
 		w_data.bPictureLoading = true;
 		load_picture(w_data.p.w_icon, true);
 	}
@@ -942,12 +947,11 @@ void download_complete_handler(NetDownload *download)
 		w_data.bPictureLoading = false;
 		
 		// free current bitmap
+		bitmap_layer_set_bitmap(weather_layer, NULL);
 		gbitmap_destroy(w_data.w_bitmap);
 		w_data.w_bitmap = bmp;
+		bitmap_layer_set_bitmap(weather_layer, w_data.w_bitmap);
 
-		//Update Weather layer
-		layer_mark_dirty(s_clock_layer);
-		
 		//if there is a queue for small images, load it
 		if (w_data.nCurrFCIcon != -1)
 			load_picture(fc_data[w_data.nCurrFCIcon].w_icon, false);
@@ -1029,6 +1033,11 @@ static void main_window_load(Window *window)
 	bitmap_layer_set_background_color(battery_layer, GColorClear);
 	bitmap_layer_set_compositing_mode(battery_layer, GCompOpSet);
 	
+	//Init Weather
+	weather_layer = bitmap_layer_create(GRect(rcClock.size.w/2-60/2, rcClock.size.h-50-5, 60, 50)); 
+	bitmap_layer_set_background_color(weather_layer, GColorClear);
+	bitmap_layer_set_compositing_mode(weather_layer, GCompOpSet);
+	
 	//Init Forecast Layer
 	fc_location_layer = text_layer_create(GRect(0, -18, bounds.size.w, 18));
 	text_layer_set_text_alignment(fc_location_layer, GTextAlignmentCenter);
@@ -1049,6 +1058,7 @@ static void main_window_unload(Window *window)
 {
 	layer_destroy(s_cal_layer);
 	layer_destroy(s_clock_layer);
+	bitmap_layer_destroy(weather_layer);
 	bitmap_layer_destroy(battery_layer);
 	bitmap_layer_destroy(radio_layer);
 	text_layer_destroy(fc_location_layer);
