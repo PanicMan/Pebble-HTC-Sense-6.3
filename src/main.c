@@ -208,7 +208,8 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 	//Background
 	GSize bg_size = gbitmap_get_bounds(s_ClockBG).size;
 	graphics_draw_bitmap_in_rect(ctx, s_ClockBG, GRect(0, 0, bg_size.w, bg_size.h));
-/*	
+
+/*	//Manual Background Draw
 	//Upper back
 	graphics_context_set_stroke_color(ctx, GColorWhite);
 	graphics_context_set_fill_color(ctx, GColorLightGray);
@@ -257,16 +258,21 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 	}
 	
 	//Weather, only if a valid temperature exist
-	if (w_data.p.w_time > 0 && settings.weather)
+	if (settings.weather)
 	{
-		graphics_context_set_text_color(ctx, GColorWhite);
-		graphics_draw_text(ctx, w_data.p.w_city, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(4, 60, 96, 14 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-		graphics_draw_text(ctx, w_data.p.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+		if (w_data.p.w_time > 0)
+		{
+			graphics_context_set_text_color(ctx, GColorWhite);
+			graphics_draw_text(ctx, w_data.p.w_city, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(4, 60, 96, 14 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+			graphics_draw_text(ctx, w_data.p.w_cond, s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 
-		char sTemp[] = "-00.0°";
-		snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)w_data.p.w_temp * (settings.units ? 1.8 : 1) + (settings.units ? 32 : 0))); //°C or °F?
-		GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
-		graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-5, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
+			char sTemp[] = "-00.0°";
+			snprintf(sTemp, sizeof(sTemp), "%d°", (int16_t)((double)w_data.p.w_temp * (settings.units ? 1.8 : 1) + (settings.units ? 32 : 0))); //°C or °F?
+			GSize szTemp = graphics_text_layout_get_content_size(sTemp, s_TempFont, GRect(0, 0, 144, 168), GTextOverflowModeFill, GTextAlignmentRight);
+			graphics_draw_text(ctx, sTemp, s_TempFont, GRect(bg_size.w-4-szTemp.w, bg_size.h-19-szTemp.h/2-5, szTemp.w, szTemp.h), GTextOverflowModeFill, GTextAlignmentRight, NULL);
+		}
+		else
+			graphics_draw_text(ctx, "Updating...", s_CondFont, GRect(4, 76, 96, 10 + 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
@@ -680,15 +686,17 @@ static void update_configuration(void)
 	{
 		layer_add_child(window_layer, bitmap_layer_get_layer(radio_layer));
 		layer_add_child(window_layer, bitmap_layer_get_layer(battery_layer));
-
-		//Remove and add last forecast layer to be in front of smart layers
-		layer_remove_from_parent(fc_data[4].w_layer);
-		layer_add_child(window_layer, fc_data[4].w_layer);
 	}
 	
 	layer_remove_from_parent(bitmap_layer_get_layer(weather_layer));
 	if (settings.weather)
 		layer_add_child(window_layer, bitmap_layer_get_layer(weather_layer));	
+
+	for (uint8_t i=0; i<5; i++)
+		layer_remove_from_parent(fc_data[i].w_layer);
+	if (settings.weather_fc)
+		for (uint8_t i=0; i<5; i++)
+			layer_add_child(window_layer, fc_data[i].w_layer);
 	
 	//Get a time structure so that it doesn't start blank
 	time_t temp = time(NULL);
@@ -878,6 +886,7 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		
 		//Force weather to update
 		w_data.p.w_time = 0;
+		bitmap_layer_set_bitmap(weather_layer, NULL);
 		persist_delete(PK_WEATHER);
 		bUpdateWeather = true;
 		update_configuration();
@@ -1050,7 +1059,6 @@ static void main_window_load(Window *window)
 	for (uint8_t i=0; i<5; i++) {
 		fc_data[i].w_layer = layer_create(GRect(bounds.size.w, 18+30*i, bounds.size.w, 30));
 		layer_set_update_proc(fc_data[i].w_layer, fcx_layer_update_callback);
-		layer_add_child(window_layer, fc_data[i].w_layer);
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
