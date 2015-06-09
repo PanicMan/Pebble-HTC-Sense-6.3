@@ -714,8 +714,7 @@ static void update_configuration(void)
 	if (settings.debug)
 		tap_handler(ACCEL_AXIS_X, 0);
 	
-	if (settings.debug)
-		light_enable(true);
+	light_enable(settings.debug);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 void load_picture(uint8_t nNr, bool bBig)
