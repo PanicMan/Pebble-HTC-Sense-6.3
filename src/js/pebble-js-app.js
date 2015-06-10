@@ -6,7 +6,6 @@ var transferInProgress = false;
 var forecastWeatherFetch = false;
 var CityID = 0, posLat = "0", posLon = "0", lang = "en";
 //-----------------------------------------------------------------------------------------------------------------------
-//http://panicman.github.io/images/weather_big0-12.png
 var weatherIcon = {
     "01d" : 0,
     "02d" : 1,
@@ -28,7 +27,6 @@ var weatherIcon = {
     "50n" : 8
 };
 
-//http://panicman.github.io/images/weather_mini0-8.png
 var weatherIconMini = {
     "01d" : 0,
     "02d" : 1,
@@ -50,7 +48,6 @@ var weatherIconMini = {
     "50n" : 8
 };
 //-----------------------------------------------------------------------------------------------------------------------
-//-- Get current location: http://forums.getpebble.com/discussion/21755/pebble-js-location-to-url
 var locationOptions = {
 	enableHighAccuracy: true, 
 	maximumAge: 10000, 
@@ -81,9 +78,13 @@ Pebble.addEventListener('ready',
 		
 		//Get pebble language
 		if(Pebble.getActiveWatchInfo) {
-			var watch = Pebble.getActiveWatchInfo();
-			p_lang = watch.language;
-		}
+			try {
+				var watch = Pebble.getActiveWatchInfo();
+				p_lang = watch.language;
+			} catch(err) {
+				console.log("Pebble.getActiveWatchInfo(); Error!");
+			}
+		} 
 		
 		//Choose language
 		var sub = p_lang.substring(0, 2);
@@ -327,7 +328,7 @@ Pebble.addEventListener('showConfiguration',
 		console.log("stored options: " + JSON.stringify(options));
 		console.log("showing configuration");
 
-		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.3';
+		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.6';
 		if (options !== null) {
 			uri += 
 				'&ampm=' + encodeURIComponent(options.ampm) + 
@@ -376,7 +377,7 @@ Pebble.addEventListener('webviewclosed',
 				function(e) {
 					console.log('Unable to deliver message with transactionId=' + e.data.transactionId + ' Error is: ' + e.error.message);
 				}
-	);
+			);
 		} else {
 			console.log("no options received");
 		}

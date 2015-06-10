@@ -74,6 +74,12 @@
     "resources": {
         "media": [
             {
+                "file": "images/Menu.png",
+                "menuIcon": true,
+                "name": "IMAGE_MENU",
+                "type": "png"
+            },
+            {
                 "file": "images/Battery.png",
                 "name": "IMAGE_SMART_STATUS",
                 "type": "png"
@@ -109,7 +115,7 @@
         "basalt"
     ],
     "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
-    "versionLabel": "1.3",
+    "versionLabel": "1.6",
     "watchapp": {
         "watchface": true
     }
