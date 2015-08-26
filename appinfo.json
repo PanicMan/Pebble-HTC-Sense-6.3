@@ -48,6 +48,7 @@
         "debug": 38,
         "firstwd": 15,
         "grid": 16,
+        "hc_mode": 39,
         "invert": 17,
         "preweeks": 19,
         "quietf": 32,
@@ -73,6 +74,11 @@
     "projectType": "native",
     "resources": {
         "media": [
+            {
+                "file": "images/numbers_hc.png",
+                "name": "IMAGE_NUMBERS_HC",
+                "type": "png"
+            },
             {
                 "file": "images/Menu.png",
                 "menuIcon": true,
@@ -115,7 +121,7 @@
         "basalt"
     ],
     "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
-    "versionLabel": "1.6",
+    "versionLabel": "1.7",
     "watchapp": {
         "watchface": true
     }

@@ -47,6 +47,7 @@ var weatherIconMini = {
     "13n" : 7,
     "50n" : 8
 };
+
 //-----------------------------------------------------------------------------------------------------------------------
 var locationOptions = {
 	enableHighAccuracy: true, 
@@ -164,8 +165,10 @@ function updateWeather() {
 	
 	if (CityID !== 0)
 		URL += "id="+CityID.toString();
+		//https://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20weather.forecast%20where%20u=%22c%22%20and%20woeid=20066914&format=json
 	else if (posLat != "0" && posLon != "0")
 		URL += "lat=" + posLat + "&lon=" + posLon;
+		//https://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20weather.forecast%20where%20u=%22c%22%20uand%20uwoeid%20in%20%28select%20woeid%20from%20geo.placefinder%20where%20text=%2248.062,%208.538%22%20and%20gflags=%22R%22%29&format=json
 	else
 		return; //Error
 	
@@ -328,7 +331,7 @@ Pebble.addEventListener('showConfiguration',
 		console.log("stored options: " + JSON.stringify(options));
 		console.log("showing configuration");
 
-		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.6';
+		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.7';
 		if (options !== null) {
 			uri += 
 				'&ampm=' + encodeURIComponent(options.ampm) + 
@@ -356,7 +359,8 @@ Pebble.addEventListener('showConfiguration',
 				'&vibr_hr=' + encodeURIComponent(options.vibr_hr) + 
 				'&vibr_bl=' + encodeURIComponent(options.vibr_bl) + 
 				'&vibr_bc=' + encodeURIComponent(options.vibr_bc) + 
-				'&debug=' + encodeURIComponent(options.debug);
+				'&debug=' + encodeURIComponent(options.debug) +
+				'&hc_mode=' + encodeURIComponent(options.hc_mode);
 		}
 		console.log("Uri: " + uri);
 		Pebble.openURL(uri);

@@ -44,6 +44,7 @@ enum DataKeys {
 	C_VIBR_BC=36,
 	C_WEATHER_ASO=37,
 	C_DEBUG=38,
+	C_HC_MODE=39,
 	FC_CKEY=99,
 	FC_DATE1=100,
 	FC_TEMP_H1=101,
@@ -128,7 +129,7 @@ Forecast_Data fc_data[] = {
 
 typedef struct {
 	//General
-	bool ampm, smart, debug;
+	bool ampm, smart, debug, hc_mode;
 	//Calendar
 	bool firstwd, grid, invert, showmy;
 	uint8_t preweeks;
@@ -147,6 +148,7 @@ Settings_Data settings = {
 	.ampm = false,
 	.smart = true,
 	.debug = false,
+	.hc_mode = false,
 	.firstwd = false,	//So=true, Mo=false
 	.grid = true,
 	.invert = true,
@@ -180,7 +182,7 @@ static PropertyAnimation *s_pa_location;
 static GBitmap *s_ClockBG, *s_Numbers, *s_BmpBattAkt, *s_BmpRadio, *s_StatusAll;
 static GFont s_TempFont, s_CondFont;
 static uint8_t s_HH, s_MM, s_SS, aktBatt, aktBattAnim, nDLRetries;
-static AppTimer *timer_weather, *timer_weather_fc, *timer_batt, *timer_request, *timer_slide;
+static AppTimer *timer_weather, *timer_weather_fc, *timer_batt, *timer_request, *timer_slide, *timer_slide_fix;
 static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png";
 static bool s_bCharging;
 
@@ -202,47 +204,55 @@ uint32_t HexToInt(char* hexstring)
 //-----------------------------------------------------------------------------------------------------------------------
 static void clock_layer_update_callback(Layer *layer, GContext* ctx) 
 {
-	//GRect rcFrame = layer_get_frame(layer);
+	GRect rcFrame = layer_get_frame(layer);
 	graphics_context_set_compositing_mode(ctx, GCompOpSet);
+	GSize bg_size = gbitmap_get_bounds(s_ClockBG).size;
 
 	//Background
-	GSize bg_size = gbitmap_get_bounds(s_ClockBG).size;
-	graphics_draw_bitmap_in_rect(ctx, s_ClockBG, GRect(0, 0, bg_size.w, bg_size.h));
+	if (!settings.hc_mode)
+		graphics_draw_bitmap_in_rect(ctx, s_ClockBG, GRect(0, 0, bg_size.w, bg_size.h));
+	else
+	{
+		//Manual Background Draw
+		//Upper back
+		graphics_context_set_stroke_color(ctx, GColorWhite);
+		graphics_context_set_fill_color(ctx, GColorLightGray);
+		graphics_fill_rect(ctx, GRect(-1, 5, rcFrame.size.w+2, 60), 10, GCornersTop);
+		graphics_draw_round_rect(ctx, GRect(-1, 5, rcFrame.size.w+2, 60), 10);
 
-/*	//Manual Background Draw
-	//Upper back
-	graphics_context_set_stroke_color(ctx, GColorWhite);
-	graphics_context_set_fill_color(ctx, GColorLightGray);
-	graphics_fill_rect(ctx, GRect(-1, 5, rcFrame.size.w+2, 60), 10, GCornersTop);
-	graphics_draw_round_rect(ctx, GRect(-1, 5, rcFrame.size.w+2, 60), 10);
+		//Bottom back
+		graphics_context_set_fill_color(ctx, GColorDarkGray);
+		graphics_fill_rect(ctx, GRect(0, 20, rcFrame.size.w, 45), 6, GCornersTop);
 
-	//Bottom back
-	graphics_context_set_fill_color(ctx, GColorDarkGray);
-	graphics_fill_rect(ctx, GRect(0, 20, rcFrame.size.w, 45), 6, GCornersTop);
+		//Black Bottom
+		graphics_context_set_stroke_color(ctx, GColorDarkGray);
+		graphics_context_set_fill_color(ctx, GColorBlack);
+		graphics_fill_rect(ctx, GRect(0, 58, rcFrame.size.w, rcFrame.size.h-58), 6, GCornersAll);
+		graphics_draw_round_rect(ctx, GRect(0, 58, rcFrame.size.w, rcFrame.size.h-58), 6);
 
-	//Black Bottom
-	graphics_context_set_stroke_color(ctx, GColorDarkGray);
-	graphics_context_set_fill_color(ctx, GColorBlack);
-	graphics_fill_rect(ctx, GRect(0, 58, rcFrame.size.w, rcFrame.size.h-58), 6, GCornersAll);
-	graphics_draw_round_rect(ctx, GRect(0, 58, rcFrame.size.w, rcFrame.size.h-58), 6);
+		//Hour Back
+		graphics_context_set_stroke_color(ctx, GColorLightGray);
+		graphics_context_set_fill_color(ctx, GColorWhite);
+		graphics_fill_rect(ctx, GRect(6, 0, 64, 58), 5, GCornersAll);
+		graphics_draw_round_rect(ctx, GRect(6, 0, 64, 58), 5);
+		graphics_fill_rect(ctx, GRect(rcFrame.size.w-64-6, 0, 64, 58), 5, GCornersAll);
+		graphics_draw_round_rect(ctx, GRect(rcFrame.size.w-64-6, 0, 64, 58), 5);
+/*	
+		//Hour Bottom shadow
+		graphics_context_set_fill_color(ctx, GColorLightGray);
+		graphics_fill_rect(ctx, GRect(7, 58-16, 62, 16), 5, GCornersBottom);
+		graphics_fill_rect(ctx, GRect(rcFrame.size.w-62-7, 58-16, 62, 16), 5, GCornersBottom);
 
-	//Hour Back
-	graphics_context_set_stroke_color(ctx, GColorLightGray);
-	graphics_context_set_fill_color(ctx, GColorWhite);
-	graphics_fill_rect(ctx, GRect(6, 0, 64, 58), 5, GCornersAll);
-	graphics_draw_round_rect(ctx, GRect(6, 0, 64, 58), 5);
-	graphics_fill_rect(ctx, GRect(rcFrame.size.w-64-6, 0, 64, 58), 5, GCornersAll);
-	graphics_draw_round_rect(ctx, GRect(rcFrame.size.w-64-6, 0, 64, 58), 5);
-	
-	//Hour Bottom shadow
-	graphics_context_set_fill_color(ctx, GColorLightGray);
-	graphics_fill_rect(ctx, GRect(7, 58-16, 62, 16), 5, GCornersBottom);
-	graphics_fill_rect(ctx, GRect(rcFrame.size.w-62-7, 58-16, 62, 16), 5, GCornersBottom);
-	
-	//Hour middle shadow	
-	graphics_fill_rect(ctx, GRect(7, 29-16, 62, 16), 5, GCornerNone);
-	graphics_fill_rect(ctx, GRect(rcFrame.size.w-62-7, 29-16, 62, 16), 5, GCornerNone);
+		//Hour middle shadow	
+		graphics_fill_rect(ctx, GRect(7, 29-16, 62, 16), 5, GCornerNone);
+		graphics_fill_rect(ctx, GRect(rcFrame.size.w-62-7, 29-16, 62, 16), 5, GCornerNone);
 */	
+		//Middle Line
+		graphics_context_set_stroke_color(ctx, GColorLightGray);
+		graphics_draw_line(ctx, GPoint(7, 29), GPoint(62+7, 29));	
+		graphics_draw_line(ctx, GPoint(rcFrame.size.w-62-7, 29), GPoint(rcFrame.size.w-7, 29));	
+	}
+
 	//Hour+Minutes
 	uint8_t nNr, x, y=5, w=32, h=47;
 	for (int i=0; i<4; i++)
@@ -255,6 +265,13 @@ static void clock_layer_update_callback(Layer *layer, GContext* ctx)
 		GBitmap *bmpNumber = gbitmap_create_as_sub_bitmap(s_Numbers, GRect(w*nNr, 0, w, h));
 		graphics_draw_bitmap_in_rect(ctx, bmpNumber, GRect(x, y, w, h));
 		gbitmap_destroy(bmpNumber);
+	}
+	
+	//AM/PM
+	if (settings.ampm)
+	{
+		graphics_context_set_text_color(ctx, GColorWhite);
+		graphics_draw_text(ctx, s_HH > 12 ? "p" : "a", s_CondFont, GRect(0, 22, 6, 10 + 2), GTextOverflowModeFill, GTextAlignmentLeft, NULL);
 	}
 	
 	//Weather, only if a valid temperature exist
@@ -626,6 +643,27 @@ void bluetooth_connection_handler(bool connected)
 	generate_vibe(connected ? settings.vibr_bc : settings.vibr_bl);
 }
 //-----------------------------------------------------------------------------------------------------------------------
+void fix_forecast_in_out()
+{
+	//Location
+	GRect rc = layer_get_frame(text_layer_get_layer(fc_location_layer));
+	rc.origin.y = w_data.bFCIsShowing ? 0 : rc.size.h * -1;
+	layer_set_frame(text_layer_get_layer(fc_location_layer), rc);
+	
+	//Now the five day layers
+	for (uint8_t i=0; i<5; i++)
+	{
+		rc = layer_get_frame(fc_data[i].w_layer);
+		rc.origin.x = w_data.bFCIsShowing ? 0 : rc.size.w;
+		layer_set_frame(fc_data[i].w_layer, rc);
+	}
+}
+//-----------------------------------------------------------------------------------------------------------------------
+static void timerCallbackSlideFix(void *data) 
+{
+	fix_forecast_in_out();
+}
+//-----------------------------------------------------------------------------------------------------------------------
 void slide_forecast_in_out()
 {
 	//Animate Location
@@ -652,11 +690,16 @@ void slide_forecast_in_out()
 		animation_set_duration((Animation*)fc_data[i].s_pa_anim, 1000);
 		animation_schedule((Animation*)fc_data[i].s_pa_anim);
 	}
+	timer_slide_fix = app_timer_register(5000, timerCallbackSlideFix, NULL);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void timerCallbackSlide(void *data) 
 {
-	slide_forecast_in_out();
+	if (w_data.bFCIsShowing || settings.debug)
+		slide_forecast_in_out();
+	
+	if (settings.debug)
+		timer_slide = app_timer_register(30000, timerCallbackSlide, NULL);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void tap_handler(AccelAxisType axis, int32_t direction) 
@@ -680,6 +723,9 @@ static void update_configuration(void)
 	Layer *window_layer = window_get_root_layer(s_main_window);
 	window_set_background_color(s_main_window, GColorFromHEX(HexToInt(settings.col_bg)));
 	
+	gbitmap_destroy(s_Numbers);
+	s_Numbers = gbitmap_create_with_resource(settings.hc_mode ? RESOURCE_ID_IMAGE_NUMBERS_HC : RESOURCE_ID_IMAGE_NUMBERS);
+
 	layer_remove_from_parent(bitmap_layer_get_layer(radio_layer));
 	layer_remove_from_parent(bitmap_layer_get_layer(battery_layer));
 	if (settings.smart)
@@ -842,6 +888,9 @@ void in_received_handler(DictionaryIterator *received, void *context)
 			break;
 		case C_DEBUG:
 			settings.debug = (intVal == 1);
+			break;
+		case C_HC_MODE:
+			settings.hc_mode = (intVal == 1);
 			break;
 		default:
 			if (akt_tuple->key >= FC_DATE1 && akt_tuple->key <= FC_COND5)
@@ -1061,6 +1110,13 @@ static void main_window_load(Window *window)
 	}
 }
 //-----------------------------------------------------------------------------------------------------------------------
+static void main_window_appear(Window *window) 
+{
+	fix_forecast_in_out();
+	if (w_data.bFCIsShowing && settings.weather_aso)
+		timer_slide = app_timer_register(30000, timerCallbackSlide, NULL);
+}
+//-----------------------------------------------------------------------------------------------------------------------
 static void main_window_unload(Window *window) 
 {
 	layer_destroy(s_cal_layer);
@@ -1095,6 +1151,7 @@ static void init()
 	window_set_window_handlers(s_main_window, (WindowHandlers) {
 		.load = main_window_load,
 		.unload = main_window_unload,
+		.appear = main_window_appear,
 	});
 	window_stack_push(s_main_window, true);
 	
@@ -1121,6 +1178,7 @@ static void deinit()
 	app_timer_cancel(timer_batt);
 	app_timer_cancel(timer_request);
 	app_timer_cancel(timer_slide);
+	app_timer_cancel(timer_slide_fix);
 	tick_timer_service_unsubscribe();
 	accel_tap_service_unsubscribe();
 	battery_state_service_unsubscribe();
