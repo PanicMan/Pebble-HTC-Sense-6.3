@@ -127,6 +127,13 @@ Forecast_Data fc_data[] = {
 	{ .date = 0, .w_temp_h = 0, .w_temp_l = 0, .w_icon = 0, .w_cond = "", .w_layer = NULL, .w_bitmap = NULL, .s_pa_anim = NULL }
 };
 
+const char weekdays[4][7][3] = {
+	{"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"},
+	{"So", "Mo", "Di", "Mi", "Do", "Fr", "Sa"},
+	{"do", "lu", "ma", "mi", "ju", "vi", "sá"},
+	{"di", "lu", "ma", "me", "je", "ve", "sa"}
+};
+
 typedef struct {
 	//General
 	bool ampm, smart, debug, hc_mode;
@@ -183,7 +190,7 @@ static GBitmap *s_ClockBG, *s_Numbers, *s_BmpBattAkt, *s_BmpRadio, *s_StatusAll;
 static GFont s_TempFont, s_CondFont;
 static uint8_t s_HH, s_MM, s_SS, aktBatt, aktBattAnim, nDLRetries;
 static AppTimer *timer_weather, *timer_weather_fc, *timer_batt, *timer_request, *timer_slide, *timer_slide_fix;
-static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png";
+static char AdressBuffer[] = "http://panicman.github.io/images/weather_big00.png", sLang[] = "en";
 static bool s_bCharging;
 
 //-----------------------------------------------------------------------------------------------------------------------
@@ -352,8 +359,12 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 			//Weekdays and vertical lines only at first row
 			if (row == settings.preweeks) 
 			{
-				strftime (sWDay, 3, "%a", tmCurr);
+				//Workaround, as %s doesn't work since FW 3.4
+				strftime (sWDay, 2, "%w", tmCurr);
 				
+				int8_t nWDay= atoi(sWDay);
+				strncpy(sWDay, weekdays[strcmp(sLang, "de") == 0 ? 1 : strcmp(sLang, "es") == 0 ? 2 : strcmp(sLang, "fr") == 0 ? 3 : 0][nWDay], 3);
+
 				if (timeCurr == timeAkt && settings.invert)
 					graphics_context_set_text_color(ctx, col_caltx);
 				
@@ -1167,6 +1178,18 @@ static void init()
 	
 	//Initialize configuration
 	update_configuration();
+	
+	char* sLocale = setlocale(LC_TIME, "");
+	if (strncmp(sLocale, "en", 2) == 0)
+		strcpy(sLang, "en");
+	else if (strncmp(sLocale, "de", 2) == 0)
+		strcpy(sLang, "de");
+	else if (strncmp(sLocale, "es", 2) == 0)
+		strcpy(sLang, "es");
+	else if (strncmp(sLocale, "fr", 2) == 0)
+		strcpy(sLang, "fr");
+	
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Time locale is set to: %s/%s", sLocale, sLang);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void deinit() 

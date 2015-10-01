@@ -4,6 +4,7 @@ var MessageQueue=function(){var RETRY_MAX=5;var queue=[];var sending=false;var t
 var initialised = false;
 var transferInProgress = false;
 var forecastWeatherFetch = false;
+var weatherprovider = "owm";
 var CityID = 0, posLat = "0", posLon = "0", lang = "en";
 //-----------------------------------------------------------------------------------------------------------------------
 var weatherIcon = {
@@ -48,6 +49,110 @@ var weatherIconMini = {
     "50n" : 8
 };
 
+var weatherIconY = {
+    "0" : 6,
+    "1" : 4,
+    "2" : 4,
+    "3" : 6,
+    "4" : 6,
+    "5" : 7,
+    "6" : 4,
+    "7" : 7,
+    "8" : 7,
+    "9" : 4,
+    "10" : 4,
+    "11" : 4,
+    "12" : 4,
+    "13" : 7,
+    "14" : 7,
+    "15" : 7,
+    "16" : 7,
+    "17" : 6,
+    "18" : 7,
+    "19" : 8,
+    "20" : 8,
+    "21" : 8,
+    "22" : 8,
+    "23" : 3,
+    "24" : 3,
+    "25" : 3,
+    "26" : 3,
+    "27" : 11,
+    "28" : 2,
+    "29" : 10,
+    "30" : 1,
+    "31" : 9,
+    "32" : 0,
+    "33" : 9,
+    "34" : 0,
+    "35" : 4,
+    "36" : 0,
+    "37" : 6,
+    "38" : 6,
+    "39" : 4,
+    "40" : 4,
+    "41" : 7,
+    "42" : 7,
+    "43" : 7,
+    "44" : 2,
+    "45" : 4,
+    "46" : 7,
+    "47" : 6,
+    "3200" : 99
+};
+
+var weatherIconMiniY = {
+    "0" : 6,
+    "1" : 4,
+    "2" : 4,
+    "3" : 6,
+    "4" : 6,
+    "5" : 7,
+    "6" : 4,
+    "7" : 7,
+    "8" : 7,
+    "9" : 4,
+    "10" : 4,
+    "11" : 4,
+    "12" : 4,
+    "13" : 7,
+    "14" : 7,
+    "15" : 7,
+    "16" : 7,
+    "17" : 6,
+    "18" : 7,
+    "19" : 8,
+    "20" : 8,
+    "21" : 8,
+    "22" : 8,
+    "23" : 3,
+    "24" : 3,
+    "25" : 3,
+    "26" : 3,
+    "27" : 2,
+    "28" : 2,
+    "29" : 1,
+    "30" : 1,
+    "31" : 0,
+    "32" : 0,
+    "33" : 0,
+    "34" : 0,
+    "35" : 4,
+    "36" : 0,
+    "37" : 6,
+    "38" : 6,
+    "39" : 4,
+    "40" : 4,
+    "41" : 7,
+    "42" : 7,
+    "43" : 7,
+    "44" : 2,
+    "45" : 4,
+    "46" : 7,
+    "47" : 6,
+    "3200" : 99
+};
+
 //-----------------------------------------------------------------------------------------------------------------------
 var locationOptions = {
 	enableHighAccuracy: true, 
@@ -59,11 +164,16 @@ function locationSuccess(pos) {
 	console.log('lat= ' + pos.coords.latitude + ' lon= ' + pos.coords.longitude);
 	posLat = (pos.coords.latitude).toFixed(3);
 	posLon = (pos.coords.longitude).toFixed(3);
-	
-	if (forecastWeatherFetch === false)
-		updateWeather();
-	else
-		updateWeatherForecast();
+
+	if (weatherprovider === "owm")
+	{
+		if (forecastWeatherFetch === false)
+			updateWeather();
+		else
+			updateWeatherForecast();
+	}
+	else if (weatherprovider === "ywp")
+		updateWeatherYWP();
 }
 //-----------------------------------------------------------------------------------------------------------------------
 function locationError(err) {
@@ -239,6 +349,43 @@ function updateWeatherForecast() {
 			}
 			else
 				console.log("Status error: " + req.status);
+		}
+	};
+	req.send(null);
+}
+//-----------------------------------------------------------------------------------------------------------------------
+function updateWeatherYWP() {
+	console.log("Updating weather");
+	var req = new XMLHttpRequest();
+	var URL = "http://api.openweathermap.org/data/2.5/weather?";
+	
+	if (CityID !== 0)
+		URL += "id="+CityID.toString();
+		//https://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20weather.forecast%20where%20u=%22c%22%20and%20woeid=20066914&format=json
+	else if (posLat != "0" && posLon != "0")
+		URL += "lat=" + posLat + "&lon=" + posLon;
+		//https://query.yahooapis.com/v1/public/yql?q=select%20*%20from%20weather.forecast%20where%20u=%22c%22%20uand%20uwoeid%20in%20%28select%20woeid%20from%20geo.placefinder%20where%20text=%2248.062,%208.538%22%20and%20gflags=%22R%22%29&format=json
+	else
+		return; //Error
+	
+	URL += "&units=metric&lang=" + lang + "&type=accurate";
+	console.log("UpdateURL: " + URL);
+	req.open("GET", URL, true);
+	req.onload = function(e) {
+		if (req.readyState == 4) {
+			if (req.status == 200) {
+				var response = JSON.parse(req.responseText);
+				var temp = Math.round(response.main.temp);//-273.15
+				var cond = response.weather[0].description;
+				var icon = response.weather[0].icon;
+				var name = response.name;
+				sendMessageToPebble({
+					"W_TEMP": temp,
+					"W_COND": cond,
+					"W_ICON": weatherIcon[icon],
+					"W_CITY": name
+				});
+			}
 		}
 	};
 	req.send(null);
