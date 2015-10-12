@@ -271,7 +271,7 @@ Pebble.addEventListener('appmessage',
 function updateWeather() {
 	console.log("Updating weather");
 	var req = new XMLHttpRequest();
-	var URL = "http://api.openweathermap.org/data/2.5/weather?";
+	var URL = "http://api.openweathermap.org/data/2.5/weather?APPID=9a4eed6c813f6d55d0699c148f7b575a&";
 	
 	if (CityID !== 0)
 		URL += "id="+CityID.toString();
@@ -308,7 +308,7 @@ function updateWeather() {
 function updateWeatherForecast() {
 	console.log("Updating weather forecast");
 	var req = new XMLHttpRequest();
-	var URL = "http://api.openweathermap.org/data/2.5/forecast/daily?";
+	var URL = "http://api.openweathermap.org/data/2.5/forecast/daily?APPID=9a4eed6c813f6d55d0699c148f7b575a&";
 	
 	if (CityID !== 0)
 		URL += "id="+CityID.toString();
@@ -478,7 +478,7 @@ Pebble.addEventListener('showConfiguration',
 		console.log("stored options: " + JSON.stringify(options));
 		console.log("showing configuration");
 
-		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.7';
+		var uri = 'http://panicman.github.io/config_htcsense.html?title=HTC%20Sense%206.3%20v1.9';
 		if (options !== null) {
 			uri += 
 				'&ampm=' + encodeURIComponent(options.ampm) + 
