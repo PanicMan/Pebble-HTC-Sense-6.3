@@ -45,6 +45,7 @@
         "col_calhl": 29,
         "col_calmy": 30,
         "col_caltx": 28,
+        "col_calwn": 41,
         "debug": 38,
         "firstwd": 15,
         "grid": 16,
@@ -54,6 +55,7 @@
         "quietf": 32,
         "quiett": 33,
         "showmy": 18,
+        "showwn": 40,
         "smart": 14,
         "units": 22,
         "update": 23,
@@ -121,7 +123,7 @@
         "basalt"
     ],
     "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
-    "versionLabel": "1.9",
+    "versionLabel": "1.11",
     "watchapp": {
         "watchface": true
     }

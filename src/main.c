@@ -45,6 +45,8 @@ enum DataKeys {
 	C_WEATHER_ASO=37,
 	C_DEBUG=38,
 	C_HC_MODE=39,
+	C_SHOWWN=40,
+	C_COL_CALWN=41,
 	FC_CKEY=99,
 	FC_DATE1=100,
 	FC_TEMP_H1=101,
@@ -138,14 +140,14 @@ typedef struct {
 	//General
 	bool ampm, smart, debug, hc_mode;
 	//Calendar
-	bool firstwd, grid, invert, showmy;
+	bool firstwd, grid, invert, showmy, showwn;
 	uint8_t preweeks;
 	//Weather
 	bool weather, units, weather_fc, weather_aso;
 	uint8_t update;
 	uint32_t cityid;
 	//Colors
-	char col_bg[7], col_calbg[7], col_calgr[7], col_caltx[7], col_calhl[7], col_calmy[7];
+	char col_bg[7], col_calbg[7], col_calgr[7], col_caltx[7], col_calhl[7], col_calmy[7], col_calwn[7];
 	//Vibrations
 	bool vibr_all;
 	uint8_t quietf, quiett, vibr_hr, vibr_bl, vibr_bc;
@@ -160,6 +162,7 @@ Settings_Data settings = {
 	.grid = true,
 	.invert = true,
 	.showmy = true,
+	.showwn = true,
 	.preweeks = 1,
 	.weather = true,
 	.units = false,		//°C = false, °F = °C × 1,8 + 32
@@ -173,6 +176,7 @@ Settings_Data settings = {
 	.col_caltx = "ffffff",
 	.col_calhl = "ffffff",
 	.col_calmy = "ffffff",
+	.col_calwn = "aaaaaa",
 	.vibr_all = true,
 	.quietf = 22,
 	.quiett = 6,
@@ -305,28 +309,26 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 	GRect rcFrame = layer_get_frame(layer);
 
 	//Get a time structure
-	time_t timeAkt = time(NULL);
+	time_t timeAkt = time(NULL)+0*86400;
 	struct tm *tmAkt = localtime(&timeAkt);
 	uint8_t wdAkt = tmAkt->tm_wday;
 	
-	int8_t cal_days = 7,	// number of columns (days of the week)
-		cal_weeks = 3,		// always display 3 weeks: # previous, current, # next
-		cal_width = 20,		// width of columns
+	int8_t cal_days = settings.showwn ? 8 : 7,	// number of columns (days of the week)
+		cal_weeks = 3,							// always display 3 weeks: # previous, current, # next
+		cal_width = settings.showwn ? 18 : 20,	// width of columns
 		cal_height = (settings.smart || settings.showmy) ? 14 : 18,		// height of columns, depens on if we need space on the bottom
-		cal_vgap = -1,		// vertical gap
+		cal_vgap = -1,							// vertical gap
 		text_shift = (cal_height == 14) ? -2 : 0,
-		cal_border = 2; 	// side of calendar
+		cal_border = settings.showwn ? 1 : 2; 	// side of calendar
 	
 	GFont current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
-	GColor8 col_caltx = GColorFromHEX(HexToInt(settings.col_caltx)), 
+	GColor8 col_caltx = GColorFromHEX(HexToInt(settings.col_caltx)), col_calwn = GColorFromHEX(HexToInt(settings.col_calwn)),
 			col_calhl = GColorFromHEX(HexToInt(settings.col_calhl)), col_calhl_i = GColorFromHEX(0xFFFFFF-HexToInt(settings.col_calhl));
 	
 	//Calculate days visible bevore
 	time_t timeFirst = timeAkt - (settings.preweeks*7 + wdAkt + (settings.firstwd ? 0 : wdAkt == 0 ? 6 : -1)) * 86400;
 	
-	graphics_context_set_text_color(ctx, col_caltx);
 	graphics_context_set_stroke_color(ctx, GColorFromHEX(HexToInt(settings.col_calgr)));
-	
 	graphics_context_set_fill_color(ctx, GColorFromHEX(HexToInt(settings.col_calbg)));
 	graphics_fill_rect(ctx, GRect(0, 0, rcFrame.size.w, rcFrame.size.h), 5, GCornersTop);
 	
@@ -336,20 +338,30 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 		{
 			//Current Day
 			char sWDay[] = "00";
-			time_t timeCurr = timeFirst + (row*7 + col) * 86400;
+			time_t timeCurr = timeFirst + (row*7 + col - (col != 0 && settings.showwn ? 1 : 0)) * 86400;
 			struct tm *tmCurr = localtime(&timeCurr);
-			strftime (sWDay, 3, "%d", tmCurr);
+		
+			strftime (sWDay, 3, col == 0 && settings.showwn ? (settings.firstwd ? "%U" : "%W") : "%d", tmCurr); //Week Number or Day
 			
+			//Week 00-52 -> 01-53
+			if (col == 0 && settings.showwn)
+			{
+				snprintf(sWDay, 3, "%d", atoi(sWDay)+1);
+				graphics_context_set_text_color(ctx, col_calwn);
+			}
+			else
+				graphics_context_set_text_color(ctx, col_caltx);
+		
 			GRect rc = GRect(cal_width * col + cal_border, cal_height * (row+1) + cal_vgap, cal_width, cal_height);
 						
-			if (timeCurr == timeAkt)
+			if (timeCurr == timeAkt && (!settings.showwn || col != 0))
 			{
 				current = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD);
 
 				if (settings.invert)
 				{
 					graphics_context_set_text_color(ctx, col_calhl_i);
-					graphics_context_set_fill_color(ctx, col_calhl);	
+					graphics_context_set_fill_color(ctx, col_calhl);
 					graphics_fill_rect(ctx, GRect(rc.origin.x+1, rc.origin.y, rc.size.w-1, rc.size.h), 0, GCornerNone);
 				}
 			}
@@ -359,23 +371,39 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 			//Weekdays and vertical lines only at first row
 			if (row == settings.preweeks) 
 			{
-				//Workaround, as %s doesn't work since FW 3.4
-				strftime (sWDay, 2, "%w", tmCurr);
+				if (!settings.showwn || col != 0)
+				{
+					//Test the old behaviour
+					char sTmp[] = "0000";
+					strftime(sTmp, sizeof(sTmp), "%a", tmCurr);
 				
-				int8_t nWDay= atoi(sWDay);
-				strncpy(sWDay, weekdays[strcmp(sLang, "de") == 0 ? 1 : strcmp(sLang, "es") == 0 ? 2 : strcmp(sLang, "fr") == 0 ? 3 : 0][nWDay], 3);
+					//Workaround, as %a doesn't work since FW 3.4
+					strftime(sWDay, 2, "%w", tmCurr);
+				
+					int8_t nWDay= atoi(sWDay);
+					strncpy(sWDay, weekdays[strcmp(sLang, "de") == 0 ? 1 : strcmp(sLang, "es") == 0 ? 2 : strcmp(sLang, "fr") == 0 ? 3 : 0][nWDay], 3);
 
-				if (timeCurr == timeAkt && settings.invert)
-					graphics_context_set_text_color(ctx, col_caltx);
+					//APP_LOG(APP_LOG_LEVEL_DEBUG, "Weekday, My: %s, strftime: %s", sWDay, sTmp);
+
+					if (timeCurr == timeAkt && settings.invert && (!settings.showwn || col != 0))
+						graphics_context_set_text_color(ctx, col_caltx);
+				}
+				else
+					strncpy(sWDay, "#", 2);
 				
-				graphics_draw_text(ctx, sWDay, current, GRect(cal_width * col + cal_border, cal_vgap + text_shift, cal_width, cal_height), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+				rc = GRect(cal_width * col + cal_border, cal_vgap + text_shift, cal_width, cal_height);
+				graphics_draw_text(ctx, sWDay, current, rc, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 
 				//Vertical line not on the last one
 				if (col != cal_days-1 && settings.grid)
 					graphics_draw_line(ctx, GPoint(cal_width * (col+1) + cal_border, cal_height + cal_vgap), GPoint(cal_width * (col+1) + cal_border, (cal_weeks+1) * cal_height + cal_vgap));
+
+				//Extra Vertical line on the Weeks
+				if (col != cal_days-1 && settings.grid && col == 0 && settings.showwn)
+					graphics_draw_line(ctx, GPoint(cal_width * (col+1) + cal_border - 1, cal_height + cal_vgap), GPoint(cal_width * (col+1) + cal_border - 1, (cal_weeks+1) * cal_height + cal_vgap));
 			}
 			
-			if (timeCurr == timeAkt)
+			if (timeCurr == timeAkt && (!settings.showwn || col != 0))
 				current = fonts_get_system_font(FONT_KEY_GOTHIC_14);
 			
 			//Horizontal line
@@ -388,14 +416,14 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 		}
 	
 	//Rect for the Bottom space
-	GRect rcBot = GRect(10, cal_vgap + cal_height * 4 + 1, rcFrame.size.w-10, rcFrame.size.h - (cal_vgap + cal_height * 4 + 1));
+	GRect rcBot = GRect((settings.smart ? 10 : 0), cal_vgap + cal_height * 4 + 1, rcFrame.size.w-(settings.smart ? 20 : 0), rcFrame.size.h - (cal_vgap + cal_height * 4 + 1));
 	
 	//Draw Month and Year
 	if (settings.showmy)
 	{
 		char sMonYear[32];
 		tmAkt = localtime(&timeAkt);
-		strftime(sMonYear, sizeof(sMonYear), "%B, %G", tmAkt);
+		strftime(sMonYear, sizeof(sMonYear), settings.showwn && false ? (settings.firstwd ? "%B, W%U/%G" : "%B, %W/%G") : "%B, %G", tmAkt);
 		graphics_context_set_text_color(ctx, GColorFromHEX(HexToInt(settings.col_calmy)));
 		graphics_draw_text(ctx, sMonYear, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(rcBot.origin.x, rcBot.origin.y - 2, rcBot.size.w, rcBot.size.h), GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 	}
@@ -840,6 +868,9 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		case C_SHOWMY:
 			settings.showmy = (intVal == 1);
 			break;
+		case C_SHOWWN:
+			settings.showwn = (intVal == 1);
+			break;
 		case C_PREWEEKS:
 			settings.preweeks = intVal;
 			break;
@@ -879,6 +910,8 @@ void in_received_handler(DictionaryIterator *received, void *context)
 		case C_COL_CALMY:
 			strcpy(settings.col_calmy, akt_tuple->value->cstring);
 			break;
+		case C_COL_CALWN:
+			strcpy(settings.col_calwn, akt_tuple->value->cstring);
 		case C_VIBR_ALL:
 			settings.vibr_all = (intVal == 1);
 			break;
@@ -1158,6 +1191,20 @@ static void init()
 	//Initialize dynamic weather image load
 	netdownload_initialize(download_complete_handler, in_received_handler, download_error_handler);
 	
+	//Initialize local language
+	char* sLocale = setlocale(LC_TIME, "");
+	if (strncmp(sLocale, "en", 2) == 0)
+		strcpy(sLang, "en");
+	else if (strncmp(sLocale, "de", 2) == 0)
+		strcpy(sLang, "de");
+	else if (strncmp(sLocale, "es", 2) == 0)
+		strcpy(sLang, "es");
+	else if (strncmp(sLocale, "fr", 2) == 0)
+		strcpy(sLang, "fr");
+	
+	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Time locale is set to: %s/%s", sLocale, sLang);
+
+	//Create main window
 	s_main_window = window_create();
 	window_set_window_handlers(s_main_window, (WindowHandlers) {
 		.load = main_window_load,
@@ -1178,18 +1225,6 @@ static void init()
 	
 	//Initialize configuration
 	update_configuration();
-	
-	char* sLocale = setlocale(LC_TIME, "");
-	if (strncmp(sLocale, "en", 2) == 0)
-		strcpy(sLang, "en");
-	else if (strncmp(sLocale, "de", 2) == 0)
-		strcpy(sLang, "de");
-	else if (strncmp(sLocale, "es", 2) == 0)
-		strcpy(sLang, "es");
-	else if (strncmp(sLocale, "fr", 2) == 0)
-		strcpy(sLang, "fr");
-	
-	app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Time locale is set to: %s/%s", sLocale, sLang);
 }
 //-----------------------------------------------------------------------------------------------------------------------
 static void deinit() 
