@@ -79,28 +79,28 @@
             {
                 "file": "images/numbers_hc.png",
                 "name": "IMAGE_NUMBERS_HC",
-                "type": "png"
+                "type": "bitmap"
+            },
+            {
+                "file": "images/Battery.png",
+                "name": "IMAGE_SMART_STATUS",
+                "type": "bitmap"
+            },
+            {
+                "file": "images/numbers.png",
+                "name": "IMAGE_NUMBERS",
+                "type": "bitmap"
+            },
+            {
+                "file": "images/clock_bg.png",
+                "name": "IMAGE_CLOCK_BG",
+                "type": "bitmap"
             },
             {
                 "file": "images/Menu.png",
                 "menuIcon": true,
                 "name": "IMAGE_MENU",
-                "type": "png"
-            },
-            {
-                "file": "images/Battery.png",
-                "name": "IMAGE_SMART_STATUS",
-                "type": "png"
-            },
-            {
-                "file": "images/numbers.png",
-                "name": "IMAGE_NUMBERS",
-                "type": "png"
-            },
-            {
-                "file": "images/clock_bg.png",
-                "name": "IMAGE_CLOCK_BG",
-                "type": "png"
+                "type": "bitmap"
             },
             {
                 "characterRegex": "[a-zA-Z\u00e4\u00f6\u00fc\u00c4\u00d6\u00dc\u00df\u00c0\u00c2\u00c4\u00c1\u00c8\u00c9\u00ca\u00cb\u00ce\u00cf\u00cd\u00d4\u00d3\u0152\u00d9\u00db\u00dc\u00da\u0178\u00d1\u00e0\u00e2\u00e4\u00e1\u00e8\u00e9\u00ea\u00eb\u00ee\u00ef\u00ed\u00f4\u00f3\u0153\u00f9\u00fb\u00fc\u00fa\u00ff\u00c7\u00e7\u00f1\u00bf\u00a1\u00ba\u00aa. ]",
@@ -123,7 +123,7 @@
         "basalt"
     ],
     "uuid": "2e1ccc91-368b-44c4-a824-75962ad3dffb",
-    "versionLabel": "1.11",
+    "versionLabel": "1.13",
     "watchapp": {
         "watchface": true
     }

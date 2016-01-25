@@ -346,7 +346,7 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 			//Week 00-52 -> 01-53
 			if (col == 0 && settings.showwn)
 			{
-				snprintf(sWDay, 3, "%d", atoi(sWDay)+1);
+				//snprintf(sWDay, 3, "%d", atoi(sWDay)+1); //Korrektur der Wochennummer
 				graphics_context_set_text_color(ctx, col_calwn);
 			}
 			else
@@ -486,7 +486,7 @@ void generate_vibe(uint8_t vibe_pattern_number)
 	//No Vbration in quiet time or if disabled
 	if (!settings.vibr_all || 
 		(settings.quietf != 0 && s_HH >= settings.quietf) || 
-		(settings.quiett != 0 && s_HH < settings.quietf))
+		(settings.quiett != 0 && s_HH < settings.quiett))
 		return;
 	
 	vibes_cancel();
