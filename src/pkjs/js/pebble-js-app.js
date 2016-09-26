@@ -488,6 +488,7 @@ Pebble.addEventListener('showConfiguration',
 				'&invert=' + encodeURIComponent(options.invert) + 
 				'&showmy=' + encodeURIComponent(options.showmy) + 
 				'&showwn=' + encodeURIComponent(options.showwn) + 
+				'&wnoffs=' + encodeURIComponent(options.wnoffs) + 
 				'&preweeks=' + encodeURIComponent(options.preweeks) + 
 				'&weather=' + encodeURIComponent(options.weather) + 
 				'&units=' + encodeURIComponent(options.units) + 

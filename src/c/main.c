@@ -47,6 +47,7 @@ enum DataKeys {
 	C_HC_MODE=39,
 	C_SHOWWN=40,
 	C_COL_CALWN=41,
+	C_WNOFFS=42,
 	FC_CKEY=99,
 	FC_DATE1=100,
 	FC_TEMP_H1=101,
@@ -142,6 +143,7 @@ typedef struct {
 	//Calendar
 	bool firstwd, grid, invert, showmy, showwn;
 	uint8_t preweeks;
+	int8_t wnoffs;
 	//Weather
 	bool weather, units, weather_fc, weather_aso;
 	uint8_t update;
@@ -163,6 +165,7 @@ Settings_Data settings = {
 	.invert = true,
 	.showmy = true,
 	.showwn = true,
+	.wnoffs = 0,
 	.preweeks = 1,
 	.weather = true,
 	.units = false,		//°C = false, °F = °C × 1,8 + 32
@@ -346,7 +349,7 @@ static void cal_layer_update_callback(Layer *layer, GContext* ctx)
 			//Week 00-52 -> 01-53
 			if (col == 0 && settings.showwn)
 			{
-				//snprintf(sWDay, 3, "%d", atoi(sWDay)+1); //Korrektur der Wochennummer
+				snprintf(sWDay, 3, "%d", atoi(sWDay)+settings.wnoffs); //Korrektur der Wochennummer
 				graphics_context_set_text_color(ctx, col_calwn);
 			}
 			else
@@ -870,6 +873,9 @@ void in_received_handler(DictionaryIterator *received, void *context)
 			break;
 		case C_SHOWWN:
 			settings.showwn = (intVal == 1);
+		case C_WNOFFS:
+			settings.wnoffs = intVal;
+			app_log(APP_LOG_LEVEL_DEBUG, __FILE__, __LINE__, "Week# offset: %d", settings.wnoffs);
 			break;
 		case C_PREWEEKS:
 			settings.preweeks = intVal;
